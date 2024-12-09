@@ -1,0 +1,88 @@
+# Copyright 2024 OpenVela
+#
+# This Dockerfile is based on and modified from the Apache NuttX
+# located at: https://github.com/apache/nuttx/blob/master/.github/workflows/docker_linux.yml
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+name: Docker-Linux
+
+on:
+  push:
+    # Publish `trunk` as Docker `latest` image.
+    branches:
+      - trunk
+    paths:
+      - '.github/workflows/docker_linux.yml'
+      - '.github/workflows/docker_linux/Dockerfile'
+
+env:
+  IMAGE_NAME: openvela-ci-linux
+
+concurrency:
+  group: docker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  # Push image to GitHub Packages.
+  push:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ghcr.io/open-vela/openvela-ci-linux
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space (Ubuntu)
+        uses: ./.github/actions/free-disk-space
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+          
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pre-build Disk Stats
+        run: |
+          df -h
+      - name: Push Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: .github/workflows/docker_linux
+          platforms: linux/amd64
+          push: ${{ github.ref == 'refs/heads/trunk' }}
+          tags: ${{ env.IMAGE_TAG }}
+      - name: Post-build Disk Stats
+        if: always()
+        run: |
+          df -h

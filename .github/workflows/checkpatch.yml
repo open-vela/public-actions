@@ -1,0 +1,54 @@
+# This is a basic workflow to help you get started with Actions
+
+name: checkpatch
+
+# Controls when the workflow will run
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+  # reusable
+  workflow_call:
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  checkpatch:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Get Repo Name
+      run: |
+          echo "REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+
+    - name: Checkout Repo
+      uses: actions/checkout@v4
+      id: checkout
+      with:
+          repository: ${{ github.repository }}
+          path: ${{ env.REPO_NAME }} 
+          fetch-depth: 0
+      
+    - name: Checkout Nuttx Repo
+      if: ${{ github.repository != '${{ github.repository_owner }}/nuttx' }}
+      uses: actions/checkout@v4
+      with:
+          ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          repository: ${{ github.repository_owner }}/nuttx
+          ref: ${{ github.head_ref }}
+          path: nuttx
+          fetch-depth: 0
+
+    - name: Check PR
+      run: |
+        echo "::add-matcher::nuttx/.github/nxstyle.json"
+        python -m venv .venv
+        source .venv/bin/activate
+        pip install cmake-format
+        cd ${{ env.REPO_NAME }}
+        commits="${{ github.event.pull_request.base.sha }}..HEAD"
+        git log --oneline $commits
+        echo "../nuttx/tools/checkpatch.sh -u -m -g $commits"
+        bash -x ../nuttx/tools/checkpatch.sh -u -m -g $commits
