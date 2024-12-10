@@ -52,9 +52,8 @@ jobs:
             source .venv/bin/activate
             pip install cmake-format
             echo "../nuttx/tools/checkpatch.sh -u -m -g $commits"
-            bash -x ../nuttx/tools/checkpatch.sh -u -m -g $commits
+            bash ../nuttx/tools/checkpatch.sh -u -m -g $commits
           else
-            set -x
             msg=`git show -s --format=%B $commits`
             while read; do
               if [[ $REPLY =~ ^Change-Id ]]; then
