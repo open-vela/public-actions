@@ -50,22 +50,6 @@ jobs:
       run: |
         ~/bin/repo --version
 
-    - name: Add SSH key
-      env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-      run: |
-        required_vars=("SSH_PRIVATE_KEY")
-          for var in "${required_vars[@]}"; do
-            if [ -z "${!var}" ]; then
-              echo "Error: Required environment variable $var is not set."
-              exit 1
-            fi
-          done
-        mkdir -p ~/.ssh                                                                                                                                                                                                    
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa                                                                                                                                                              
-        chmod 600 ~/.ssh/id_rsa                                                                                                                                                                                            
-        ssh-keyscan github.com >> ~/.ssh/known_hosts
-
     - name: Get PR source branch name
       id: get_branch_name
       run: |
@@ -74,7 +58,7 @@ jobs:
   
     - name: Repo Init
       run: |
-        ~/bin/repo init -u git@github.com:open-vela/manifests.git -b ${{ steps.get_branch_name.outputs.branch_name }} -m openvela.xml --depth=1 --git-lfs
+        ~/bin/repo init -u https://github.com/open-vela/manifests -b ${{ steps.get_branch_name.outputs.branch_name }} -m openvela.xml --depth=1 --git-lfs
         echo "REPO_INIT=true" >> $GITHUB_ENV
 
     - name: Repo Sync
@@ -102,8 +86,8 @@ jobs:
       uses: docker/login-action@v3                                                                                                                                                                                       
       with:                                                                                                                                                                                                              
         registry: ghcr.io                                                                                                                                                                                                
-        username: ${{ secrets.DOCKER_USER }}                                                                                                                                                                                    
-        password: ${{ secrets.DOCKER_TOKEN }}                                                                                                                                                                            
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}                                                                                                                                                                         
                                                                                                                                                                                                                          
     - name: Docker Pull                                                                                                                                                                                                  
       run: docker pull ghcr.io/open-vela/openvela-ci-linux                                                                                                                                                                                                                                                                                            
