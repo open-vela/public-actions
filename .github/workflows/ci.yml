@@ -14,7 +14,11 @@ on:
 jobs:
   CI:
     runs-on: ubuntu-latest
-    steps:   
+    steps:
+    - name: Get Repo Name
+      run: |
+          echo "REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+
     - name: Set up Python 3.8
       uses: actions/setup-python@v5
       with:
@@ -75,7 +79,7 @@ jobs:
         echo $(ls -atl)
         manifest_content=$(cat .repo/manifests/openvela.xml)
         echo $manifest_content
-        REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"${{ github.event.pull_request.head.repo.name }}\"" | awk -F'"' '{print $2}')
+        REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"${{ env.REPO_NAME }} \"" | awk -F'"' '{print $2}')
         echo $REPO_PATH
         cd $REPO_PATH
         git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch
