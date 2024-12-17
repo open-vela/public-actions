@@ -77,14 +77,22 @@ jobs:
         current_path=$(pwd)
         echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
         echo $(ls -atl)
-        manifest_content=$(cat .repo/manifests/openvela.xml)
-        echo $manifest_content
-        REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"${{ env.REPO_NAME }}\"" | awk -F'"' '{print $2}')
-        echo $REPO_PATH
-        cd $REPO_PATH
-        git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch
-        git checkout pr-branch
-        cd -
+        if [ ${{ env.REPO_NAME }} == "manifests" ]; then
+          cd .repo/manifests                                                                                                                                    
+          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch                                                                          
+          git checkout pr-branch                                                                                                                                
+          cd -                                                                                                                                                  
+          ~/bin/repo sync -c -d --no-tags -j12
+        else
+          manifest_content=$(cat .repo/manifests/openvela.xml)
+          echo $manifest_content
+          REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"${{ env.REPO_NAME }}\"" | awk -F'"' '{print $2}')
+          echo $REPO_PATH
+          cd $REPO_PATH
+          git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch
+          git checkout pr-branch
+          cd -
+        fi
 
     - name: Docker Login                                                                                                                                                                                                 
       uses: docker/login-action@v3                                                                                                                                                                                       
