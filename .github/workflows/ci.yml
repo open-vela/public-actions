@@ -80,8 +80,8 @@ jobs:
         if [ ${{ env.REPO_NAME }} == "manifests" ]; then
           cd .repo/manifests                                                                                                                                    
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch                                                                          
-          git checkout pr-branch                                                                                                                                
-          cd -                                                                                                                                                  
+          git merge pr-branch
+          cd -
           ~/bin/repo sync -c -d --no-tags -j12
         else
           manifest_content=$(cat .repo/manifests/openvela.xml)
