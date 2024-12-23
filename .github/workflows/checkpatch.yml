@@ -37,7 +37,7 @@ jobs:
       with:
           ssh-key: ${{ secrets.SSH_PRIVATE_KEY }}
           repository: ${{ github.repository_owner }}/nuttx
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.base.ref }}
           path: nuttx
           fetch-depth: 0
 
