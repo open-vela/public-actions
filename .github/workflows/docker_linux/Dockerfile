@@ -331,6 +331,7 @@ RUN apt-get update -qq && DEBIAN_FRONTEND="noninteractive" TZ=Etc/UTC apt-get in
   subversion \
   tclsh \
   kconfig-frontends \
+  jq \
   git-lfs
 RUN git lfs install
 RUN git lfs --version
@@ -362,8 +363,10 @@ RUN pip3 install cvt2utf
 # Install pytest
 RUN pip3 install cxxfilt
 RUN pip3 install esptool==4.8.dev4
+RUN pip3 install html-table
 RUN pip3 install imgtool
 RUN pip3 install kconfiglib
+RUN pip3 install matplotlib==3.6.2
 RUN pip3 install pexpect==4.8.0
 RUN pip3 install pyelftools
 RUN pip3 install pyserial==3.5
