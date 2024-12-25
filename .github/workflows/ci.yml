@@ -104,10 +104,70 @@ jobs:
     - name: Docker Pull                                                                                                                                                                                                  
       run: docker pull ghcr.io/open-vela/openvela-ci-linux                                                                                                                                                                                                                                                                                            
 
-    - name: Run CI tasks using script inside Docker container
+    - name: Run CI tasks inside Docker container
       run: |
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux:latest \
-          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j12"                                                                                                                                                                                                                     
+          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8"                                                                                                                                                                                                                     
+
+    - name: Upload goldfish-armeabi-v7a-ap Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: goldfish-armeabi-v7a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
+        path: nuttx/nuttx
+
+    - name: Clean
+      run: |
+        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+      continue-on-error: true
+
+    - name: Run test build inside Docker container
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ghcr.io/open-vela/openvela-ci-linux:latest \
+          /bin/bash -c "./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest -e -Werror -j8"
+
+    - name: Run autotest tasks inside Docker container
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ghcr.io/open-vela/openvela-ci-linux:latest \
+          /bin/bash -c "cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json"
+
+    - name: Check autotest result
+      id: autotest_result
+      run: |
+        cd ${{ github.workspace }}
+        mkdir output
+        cp nuttx/nuttx ./*.log ./autotest.json output
+        failed=$(cat autotest.json | jq '.report.summary.failed')
+        if [ "$failed" != "null" ] && [ "$failed" != "0" ]; then
+          echo "autotest failed: $failed"
+          result="failed"
+        else
+          echo "autotest passed"
+          result="success"
+        fi
+        echo "::set-output name=AUTOTEST_RESULT::${result}"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: goldfish-armeabi-v7a-ap-citest_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
+        path: output/
+
+    - name: Exit with autotest exit code
+      run: |
+        if [ ${{ steps.autotest_result.outputs.AUTOTEST_RESULT }} == "success" ]; then
+          exit 0;
+        else
+          exit 1;
+        fi
