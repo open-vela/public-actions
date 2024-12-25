@@ -4,8 +4,8 @@ name: CI
 
 # Controls when the workflow will run
 on:
-  pull_request_review:
-    types: [submitted]
+  pull_request:
+    types: [opened, reopened, synchronize]
 
   # reusable
   workflow_call:
@@ -72,7 +72,7 @@ jobs:
         df -h
 
     - name: Fetch PR
-      if: ${{ github.event_name == 'pull_request_review' }}
+      if: ${{ github.event_name == 'pull_request' }}
       run: |
         current_path=$(pwd)
         echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
