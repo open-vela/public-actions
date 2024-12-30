@@ -114,11 +114,11 @@ jobs:
 
     - name: check cherry-pick pr result
       run: |
-        if [ ${{ env.REPO_SYNC_CODE }} == 0 ]; then
-          echo "repo sync after cherry-pick manifest PR success."
-        else
+        if [ -n "${{ env.REPO_SYNC_CODE }}" ] && [ ${{ env.REPO_SYNC_CODE }} != 0 ]; then
           echo "repo sync after cherry-pick manifest PR failed."
           exit 1
+        else
+          echo "repo sync after cherry-pick manifest PR success."
         fi
         if [ ${{ env.CP_PR_CODE }} == 0 ]; then
           echo "cherry-pick PR success and continue."
