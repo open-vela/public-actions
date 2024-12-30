@@ -77,6 +77,8 @@ jobs:
         current_path=$(pwd)
         echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
         echo $(ls -atl)
+        git config --global user.email "openvela-robot@xiaomi.com"
+        git config --global user.name "openvela-robot"
         if [ ${{ env.REPO_NAME }} == "manifests" ]; then
           cd .repo/manifests                                                                                                                                    
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch                                                                          
