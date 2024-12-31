@@ -80,11 +80,12 @@ jobs:
         git config --global user.email "openvela-robot@xiaomi.com"
         git config --global user.name "openvela-robot"
         if [ ${{ env.REPO_NAME }} == "manifests" ]; then
-          cd .repo/manifests                                                                                                                                    
+          cd .repo/manifests
+          echo "git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch"
           git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch                                                                          
-          echo "git cherry-pick -x pr-branch"
+          echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
           set +e
-          cp_pr_result=$(git cherry-pick -x pr-branch 2>&1)
+          cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) 2>&1)
           cp_pr_code=$?
           echo $cp_pr_result
           safe_cp_pr_result=$(echo "$cp_pr_result" | tr -d '\n' | tr -d '\r' | sed 's/[]\$`"\\]//g') # 格式化结果
@@ -99,10 +100,11 @@ jobs:
           REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"${{ env.REPO_NAME }}\"" | awk -F'"' '{print $2}')
           echo $REPO_PATH
           cd $REPO_PATH
+          echo "git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch"
           git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch
-          echo "git cherry-pick -x pr-branch"
+          echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
           set +e
-          cp_pr_result=$(git cherry-pick -x pr-branch 2>&1)
+          cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) 2>&1)
           cp_pr_code=$?
           echo $cp_pr_result
           safe_cp_pr_result=$(echo "$cp_pr_result" | tr -d '\n' | tr -d '\r' | sed 's/[]\$`"\\]//g') # 格式化结果
