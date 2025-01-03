@@ -1,0 +1,28 @@
+name: Add reviewers Job
+run-name: ${{ github.actor }}'s add reviewers job
+on:
+  pull_request:
+    types: [opened, reopened]
+
+  # reusable
+  workflow_call:
+
+jobs:
+  onOpenedPullRequest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Reviewers
+        id: get_reviewers
+        run: |
+          REPO_NAME="$(basename ${{ github.repository }})"
+          if [ ! -z "${{ env.CODEREVIEWERS_URL }}" ];then
+            wget -O codereviewers.github.json "${{ env.CODEREVIEWERS_URL }}"
+            REVIEWERS=$(jq -c -r '.'${REPO_NAME}'|map(select(.!="${{ github.actor }}"))' codereviewers.github.json|jq -r '.[]'|tr '\n' ','|sed 's/,$//g')
+            echo "REVIEWERS=${REVIEWERS}"|tee $GITHUB_ENV
+          fi
+
+      - name: Add Pull Request Reviewers
+        uses: sakhnovict/add-reviewers-action@1.0.0
+        with:
+          reviewers: ${{ env.REVIEWERS }}
+          token: ${{ secrets.GITHUB_TOKEN }}

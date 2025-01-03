@@ -1,0 +1,647 @@
+{
+  "apps": [
+    "GUIDINGLI"
+  ],
+  "apps_benchmarks_coremark": [
+    "GUIDINGLI"
+  ],
+  "apps_benchmarks_test-tlb": [
+    "GUIDINGLI"
+  ],
+  "apps_crypto_libsodium": [
+    "ThePassionate"
+  ],
+  "apps_crypto_libtomcrypt": [
+    "ThePassionate"
+  ],
+  "apps_crypto_mbedtls": [
+    "ThePassionate"
+  ],
+  "apps_crypto_tinycrypt": [
+    "ThePassionate"
+  ],
+  "apps_examples_unpv13e": [
+    "GUIDINGLI"
+  ],
+  "apps_graphics_libyuv": [
+    "jianglianfang"
+  ],
+  "apps_graphics_lvgl": [
+    "FASTSHIFT"
+  ],
+  "apps_interpreters_lua": [
+    "XuNeo"
+  ],
+  "apps_interpreters_wamr": [
+    "huangqi3@xiaomi.com"
+  ],
+  "apps_math_gemmlowp": [
+    "zhhyu7"
+  ],
+  "apps_math_kissfft": [
+    "jihandong"
+  ],
+  "apps_math_libtommath": [
+    "fxysunshine"
+  ],
+  "apps_math_ruy": [
+    "jihandong"
+  ],
+  "apps_mlearning_cmsis-nn": [
+    "jihandong"
+  ],
+  "apps_mlearning_cmsis_CMSIS_5": [
+    "jihandong"
+  ],
+  "apps_mlearning_tflite-micro": [
+    "jihandong"
+  ],
+  "apps_netutils_connectedhomeip": [
+    "zhhyu7"
+  ],
+  "apps_netutils_connectedhomeip_inipp": [
+    "GUIDINGLI"
+  ],
+  "apps_netutils_connectedhomeip_nlassert": [
+    "zhhyu7"
+  ],
+  "apps_netutils_connectedhomeip_nlio": [
+    "zhhyu7"
+  ],
+  "apps_netutils_connectedhomeip_nlunit-test": [
+    "zhhyu7"
+  ],
+  "apps_netutils_connectedhomeip_pigweed": [
+    "zhhyu7"
+  ],
+  "apps_netutils_cjson_cJSON": [
+    "GUIDINGLI"
+  ],
+  "apps_netutils_jsoncpp": [
+    "GUIDINGLI"
+  ],
+  "apps_netutils_mqttc_MQTT-C": [
+    "wengzhe",
+    "zhhyu7"
+  ],
+  "apps_system_adb_microADB": [
+    "Donny9"
+  ],
+  "apps_system_argtable3": [
+    "GUIDINGLI"
+  ],
+  "apps_system_flatbuffers": [
+    "jihandong"
+  ],
+  "apps_system_libuv": [
+    "Donny9",
+    "huangqi3@xiaomi.com"
+  ],
+  "apps_system_zlib": [
+    "GUIDINGLI"
+  ],
+  "apps_testing_cmocka": [
+    "GUIDINGLI"
+  ],
+  "apps_testing_fff": [
+    "GUIDINGLI"
+  ],
+  "apps_testing_libc-test": [
+    "GUIDINGLI"
+  ],
+  "apps_testing_ltp": [
+    "GUIDINGLI"
+  ],
+  "apps_testing_nist-sts": [
+    "ThePassionate"
+  ],
+  "apps_testing_stressapptest": [
+    "GUIDINGLI"
+  ],
+  "apps_testing_unity_Unity": [
+    "GUIDINGLI"
+  ],
+  "docs": [
+    "tanghao-xiaomi"
+  ],
+  "external": [
+    "GUIDINGLI"
+  ],
+  "external_abseil-cpp": [
+    "GUIDINGLI"
+  ],
+  "external_aac": [
+    "dabao-baba"
+  ],
+  "external_android_frameworks_native": [
+    "zhangbo0325"
+  ],
+  "external_android_hardware_interfaces": [
+    "zhangbo0325"
+  ],
+  "external_android_hardware_libhardware": [
+    "zhangbo0325"
+  ],
+  "external_android_system_chre": [
+    "Donny9"
+  ],
+  "external_android_system_chre_chre_host_nuttx": [
+    "Donny9"
+  ],
+  "external_android_system_core": [
+    "zhangbo0325"
+  ],
+  "external_android_system_keymaster": [
+    "zhangbo0325"
+  ],
+  "external_android_system_libbase": [
+    "zhangbo0325"
+  ],
+  "external_android_system_libcppbor": [
+    "zhangbo0325"
+  ],
+  "external_android_system_libfmq": [
+    "zhangbo0325"
+  ],
+  "external_android_system_libhidl": [
+    "zhangbo0325"
+  ],
+  "external_android_system_libhwbinder": [
+    "zhangbo0325"
+  ],
+  "external_android_system_logging": [
+    "zhangbo0325"
+  ],
+  "external_android_system_security": [
+    "zhangbo0325"
+  ],
+  "external_android_system_tools_aidl": [
+    "zhangbo0325"
+  ],
+  "external_android_system_tools_hidl": [
+    "zhangbo0325"
+  ],
+  "external_atomic_queue": [
+    "GUIDINGLI"
+  ],
+  "external_auto-pts": [
+    "hyson710"
+  ],
+  "external_avb": [
+    "fxysunshine"
+  ],
+  "external_bzip2": [
+    "GUIDINGLI"
+  ],
+  "external_c-ares": [
+    "zhhyu7"
+  ],
+  "external_cAT": [
+    "Donny9"
+  ],
+  "external_cmark-gfm": [
+    "rongyichang@xiaomi.com"
+  ],
+  "external_cpuid": [
+    "GUIDINGLI"
+  ],
+  "external_curl": [
+    "wengzhe",
+    "zhhyu7"
+  ],
+  "external_dbus": [
+    "Donny9",
+    "huangcaihua@xiaomi.com"
+  ],
+  "external_ddelta": [
+    "GUIDINGLI"
+  ],
+  "external_enet": [
+    "wengzhe",
+    "zhhyu7"
+  ],
+  "external_erpc": [
+    "zhhyu7"
+  ],
+  "external_exfatprogs": [
+    "Donny9"
+  ],
+  "external_fluoride": [
+    "dabao-baba"
+  ],
+  "external_fmtlib": [
+    "GUIDINGLI"
+  ],
+  "external_freetype": [
+    "FASTSHIFT"
+  ],
+  "external_freetype_freetype_subprojects_dlg": [
+    "FASTSHIFT"
+  ],
+  "external_glib": [
+    "Donny9",
+    "huangcaihua@xiaomi.com",
+    "ethan-lcz"
+  ],
+  "external_glib_glib_subprojects_gvdb": [
+    "huangcaihua@xiaomi.com",
+    "ethan-lcz"
+  ],
+  "external_googletest": [
+    "GUIDINGLI"
+  ],
+  "external_googlebenchmark": [
+    "GUIDINGLI"
+  ],
+  "external_harfbuzz": [
+    "jianglianfang"
+  ],
+  "external_iperf2": [
+    "wengzhe",
+    "zhhyu7"
+  ],
+  "external_iperf3": [
+    "wengzhe",
+    "zhhyu7"
+  ],
+  "external_json-c": [
+    "GUIDINGLI"
+  ],
+  "external_lc3": [
+    "dabao-baba"
+  ],
+  "external_ldns": [
+    "dabao-baba"
+  ],
+  "external_libchrome_modp_b64": [
+    "fxysunshine"
+  ],
+  "external_libdivide": [
+    "fxysunshine"
+  ],
+  "external_libexpat": [
+    "GUIDINGLI"
+  ],
+  "external_libfluoride-sbc": [
+    "dabao-baba"
+  ],
+  "external_libhelix-aac": [
+    "dabao-baba"
+  ],
+  "external_libhelix-mp3": [
+    "dabao-baba"
+  ],
+  "external_libjpeg-turbo": [
+    "dabao-baba"
+  ],
+  "external_libldac": [
+    "dabao-baba"
+  ],
+  "external_libopencore-amr": [
+    "dabao-baba"
+  ],
+  "external_libpng": [
+    "W-Mai",
+    "terry0012"
+  ],
+  "external_libssh": [
+    "zhhyu7"
+  ],
+  "external_libtar": [
+    "GUIDINGLI"
+  ],
+  "external_libwebp": [
+    "rongyichang@xiaomi.com"
+  ],
+  "external_lz4": [
+    "GUIDINGLI"
+  ],
+  "external_mdns": [
+    "zhhyu7"
+  ],
+  "external_mmc-utils": [
+    "GUIDINGLI"
+  ],
+  "external_mtp-responder": [
+    "Donny9"
+  ],
+  "external_nanopb": [
+    "fxysunshine"
+  ],
+  "external_Ne10": [
+    "dabao-baba"
+  ],
+  "external_nghttp2": [
+    "wengzhe",
+    "zhhyu7"
+  ],
+  "external_nng": [
+    "Meissi-jian",
+    "wengzhe"
+  ],
+  "external_ofono": [
+    "huangcaihua@xiaomi.com",
+    "Donny9",
+    "ethan-lcz"
+  ],
+  "external_ofono_ell": [
+    "huangcaihua@xiaomi.com",
+    "ethan-lcz"
+  ],
+  "external_optee_client": [
+    "fxysunshine"
+  ],
+  "external_optee_examples": [
+    "fxysunshine"
+  ],
+  "external_optee_kmgk": [
+    "fxysunshine"
+  ],
+  "external_optee_os": [
+    "fxysunshine"
+  ],
+  "external_opus": [
+    "dabao-baba"
+  ],
+  "external_protobuf": [
+    "coderebot"
+  ],
+  "external_protobuf-c": [
+    "GUIDINGLI"
+  ],
+  "external_quirc": [
+    "FASTSHIFT"
+  ],
+  "external_rapidjson": [
+    "GUIDINGLI"
+  ],
+  "external_ril": [
+    "ethan-lcz",
+    "huangcaihua@xiaomi.com"
+  ],
+  "external_rlottie": [
+    "jianglianfang"
+  ],
+  "external_rtos-benchmark": [
+    "GUIDINGLI"
+  ],
+  "external_silk-v3-decoder": [
+    "dabao-baba"
+  ],
+  "external_sqlite": [
+    "GUIDINGLI"
+  ],
+  "external_stress": [
+    "GUIDINGLI"
+  ],
+  "external_sysklogd": [
+    "GUIDINGLI"
+  ],
+  "external_thorvg": [
+    "FASTSHIFT"
+  ],
+  "external_tinyxml2": [
+    "GUIDINGLI"
+  ],
+  "external_unqlite": [
+    "Donny9"
+  ],
+  "external_vector-sil_sil-kit": [
+    "Donny9"
+  ],
+  "external_vector-sil_sil-kit-adapters-qemu": [
+    "Donny9"
+  ],
+  "external_vector-sil_sil-kit-adapters-vcan": [
+    "GUIDINGLI"
+  ],
+  "external_yoga": [
+    "C-Ackerman"
+  ],
+  "external_zblue": [
+    "hyson710"
+  ],
+  "external_zint": [
+    "GUIDINGLI"
+  ],
+  "frameworks": [
+    "GUIDINGLI"
+  ],
+  "frameworks_bluetooth": [
+    "hyson710"
+  ],
+  "frameworks_connectivity": [
+    "zhhyu7"
+  ],
+  "frameworks_connectivity_telephony": [
+    "ethan-lcz",
+    "huangcaihua@xiaomi.com"
+  ],
+  "frameworks_graphics": [
+    "jianglianfang"
+  ],
+  "frameworks_graphics_uikit": [
+    "jianglianfang"
+  ],
+  "frameworks_multimedia": [
+    "dabao-baba"
+  ],
+  "frameworks_multimedia_media": [
+    "dabao-baba"
+  ],
+  "frameworks_multimedia_media_pfw": [
+    "dabao-baba",
+    "jihandong"
+  ],
+  "frameworks_runtimes": [
+    "tianya8318"
+  ],
+  "frameworks_runtimes_java": [
+    "zhangbo0325"
+  ],
+  "frameworks_runtimes_services": [
+    "tianya8318"
+  ],
+  "frameworks_runtimes_services_am": [
+    "coderebot",
+    "liaobin1@xiaomi.com"
+  ],
+  "frameworks_runtimes_services_brightness": [
+    "XuNeo"
+  ],
+  "frameworks_runtimes_services_pm": [
+    "liaobin1@xiaomi.com",
+    "coderebot"
+  ],
+  "frameworks_runtimes_services_system_server": [
+    "sylvia-soft"
+  ],
+  "frameworks_runtimes_services_wm": [
+    "sylvia-soft"
+  ],
+  "frameworks_runtimes_services_xmsdemo": [
+    "liaobin1@xiaomi.com"
+  ],
+  "frameworks_runtimes_typescript": [
+    "liaobin1@xiaomi.com"
+  ],
+  "frameworks_runtimes_typescript_ts2native": [
+    "liaobin1@xiaomi.com"
+  ],
+  "frameworks_runtimes_typescript_ts2wasm": [
+    "liaobin1@xiaomi.com"
+  ],
+  "frameworks_runtimes_wasm": [
+    "huangqi3@xiaomi.com",
+    "liaobin1@xiaomi.com"
+  ],
+  "frameworks_security": [
+    "fxysunshine"
+  ],
+  "frameworks_security_optee_vela": [
+    "fxysunshine"
+  ],
+  "frameworks_system": [
+    "Donny9"
+  ],
+  "frameworks_system_binder": [
+    "zhangbo0325"
+  ],
+  "frameworks_system_charger": [
+    "Donny9"
+  ],
+  "frameworks_system_healthd": [
+    "Donny9"
+  ],
+  "frameworks_system_ota": [
+    "GUIDINGLI"
+  ],
+  "frameworks_system_topics": [
+    "GUIDINGLI"
+  ],
+  "frameworks_system_utils": [
+    "huangcaihua@xiaomi.com"
+  ],
+  "frameworks_system_utils_uv": [
+    "huangqi3@xiaomi.com",
+    "Donny9"
+  ],
+  "frameworks_system_vibrator": [
+    "Donny9"
+  ],
+  "nuttx": [
+    "GUIDINGLI"
+  ],
+  "nuttx_drivers_mtd_dhara": [
+    "Donny9"
+  ],
+  "nuttx_drivers_segger_SystemView": [
+    "GUIDINGLI"
+  ],
+  "nuttx_fs_fatfs": [
+    "Donny9"
+  ],
+  "nuttx_fs_littlefs_littlefs": [
+    "Donny9"
+  ],
+  "nuttx_libs_libc_audio_libsrc_libsamplerate": [
+    "dabao-baba"
+  ],
+  "nuttx_libs_libc_fdt_dtc": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libc_gnssutils_minmea": [
+    "Donny9"
+  ],
+  "nuttx_libs_libm_libmcs": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libm_newlib": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libm_openlibm": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libxx_libcxx": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libxx_libcxxabi": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libxx_libstdcpp": [
+    "GUIDINGLI"
+  ],
+  "nuttx_libs_libxx_uClibcpp": [
+    "GUIDINGLI"
+  ],
+  "nuttx_mm_tlsf": [
+    "Donny9"
+  ],
+  "nuttx_openamp_libmetal": [
+    "GUIDINGLI"
+  ],
+  "nuttx_openamp_open-amp": [
+    "CV-Bowen"
+  ],
+  "packages": [
+    "GUIDINGLI"
+  ],
+  "packages_demos": [
+    "jianglianfang"
+  ],
+  "prebuilts_emulator_darwin-aarch64": [
+    "zhangshanmin"
+  ],
+  "prebuilts_emulator_darwin-x86_64": [
+    "zhangshanmin"
+  ],
+  "prebuilts_emulator_linux-aarch64": [
+    "zhangshanmin"
+  ],
+  "prebuilts_emulator_linux-x86_64": [
+    "zhangshanmin"
+  ],
+  "prebuilts_emulator_skins": [
+    "zhangshanmin"
+  ],
+  "prebuilts_emulator_tools": [
+    "zhangshanmin"
+  ],
+  "prebuilts_emulator_windows-x86_64": [
+    "zhangshanmin"
+  ],
+  "tests": [
+    "ttnie"
+  ],
+  "vendor": [
+    "GUIDINGLI"
+  ],
+  "vendor_openvela": [
+    "zhangshanmin"
+  ],
+  "vendor_template": [
+    "Donny9"
+  ],
+  "vendor_xiaomi": [
+    "Donny9"
+  ],
+  "vendor_xiaomi_pyxis": [
+    "rongyichang@xiaomi.com"
+  ],
+  "vendor_xiaomi_vela": [
+    "zhangshanmin"
+  ],
+  "packages_fe_example": [
+    "shenyanxiu",
+    "yaotaiyang99@gmail.com"
+  ],
+  "test": [
+    "liujinye-sys",
+    "openvela-robot"
+  ],
+  "public-actions": [
+    "liujinye-sys",
+    "openvela-robot",
+    "zhangning21"
+  ]
+}
