@@ -129,7 +129,7 @@ jobs:
         repo_sync_code=0
         cp_code=0
         cp_log=$current_path/cp.log
-        for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
+        for DEPENDENCY in ${{ env.ALL_PR }}; do
           REPO_FULL_PATH=$(echo $DEPENDENCY | cut -d ':' -f 1)
           PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
           PROJECT_NAME=$(echo $REPO_FULL_PATH | cut -d '/' -f 2)
