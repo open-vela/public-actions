@@ -24,6 +24,52 @@ jobs:
       with:
         python-version: 3.8
 
+    - name: Get Current Action URL
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+      run: |
+        echo "Current Action URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_ENV
+
+    - name: Parse PR Description for Dependencies
+      id: parse-dependencies
+      run: |
+        set -x
+        # 获取当前 PR 的描述
+        DEPENDS_ON=$(echo "${{ github.event.pull_request.body }}" | grep -oP 'depends-on:\K(.*)' | sed 's/^ *//;s/ *$//')
+        echo "PR DEPENDS_ON: $DEPENDS_ON"
+        ALL_PR="$DEPENDS_ON ${{ github.repository }}:${{ github.event.pull_request.number }}"
+        manifest_part=$(echo "$ALL_PR" | grep -o 'open-vela/manifests[^ ]*') || true
+        if [ "$manifest_part"X != ""X ]; then
+          without_manifest_pr=$(echo "$ALL_PR" | sed "s|$manifest_part||" | xargs)
+          ALL_PR="$manifest_part $without_manifest_pr"
+        fi
+        echo "ALL_PR=$ALL_PR" >> $GITHUB_ENV
+        echo "DEPENDS_ON=$DEPENDS_ON" >> $GITHUB_ENV
+    
+        for DEPENDENCY in $DEPENDS_ON; do
+          REPO_NAME=$(echo $DEPENDENCY | cut -d ':' -f 1)
+          PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
+          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
+          if [[ -z "$LATEST_SHA" ]]; then
+            echo "No commits found for PR #$PR_NUMBER or invalid API response."
+            exit 1
+          fi
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
+            -d '{
+              "state": "pending",
+              "description": "In progress",
+              "context": "CI triggered by ${{ github.repository }}#${{ github.event.pull_request.number }}",
+              "target_url": "${{ env.CURRENT_ACTION_URL }}"
+            }'
+        done
+  
     - name: Download and install repo
       run: |
         mkdir ~/bin
@@ -79,39 +125,52 @@ jobs:
         echo $(ls -atl)
         git config --global user.email "openvela-robot@xiaomi.com"
         git config --global user.name "openvela-robot"
-        if [ ${{ env.REPO_NAME }} == "manifests" ]; then
-          cd .repo/manifests
-          echo "git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch"
-          git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-branch                                                                          
-          echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
-          set +e
-          cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) 2>&1)
-          cp_pr_code=$?
-          echo $cp_pr_result
-          safe_cp_pr_result=$(echo "$cp_pr_result" | tr -d '\n' | tr -d '\r' | sed 's/[]\$`"\\]//g') # 格式化结果
-          echo "CP_PR_RESULT=$safe_cp_pr_result" >> $GITHUB_ENV
-          echo "CP_PR_CODE=$cp_pr_code" >> $GITHUB_ENV
-          cd -                                                                                                                                                  
-          ~/bin/repo sync -c -d --no-tags -j12
-          echo "REPO_SYNC_CODE=$?" >> $GITHUB_ENV
-        else
-          manifest_content=$(cat .repo/manifests/openvela.xml)
-          echo $manifest_content
-          REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"${{ env.REPO_NAME }}\"" | awk -F'"' '{print $2}')
-          echo $REPO_PATH
-          cd $REPO_PATH
-          echo "git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch"
-          git fetch openvela pull/${{ github.event.pull_request.number }}/head:pr-branch
-          echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
-          set +e
-          cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) 2>&1)
-          cp_pr_code=$?
-          echo $cp_pr_result
-          safe_cp_pr_result=$(echo "$cp_pr_result" | tr -d '\n' | tr -d '\r' | sed 's/[]\$`"\\]//g') # 格式化结果
-          echo "CP_PR_RESULT=$safe_cp_pr_result" >> $GITHUB_ENV
-          echo "CP_PR_CODE=$cp_pr_code" >> $GITHUB_ENV
-          cd -
-        fi
+        set -x
+        repo_sync_code=0
+        cp_code=0
+        cp_log=$current_path/cp.log
+        for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
+          REPO_FULL_PATH=$(echo $DEPENDENCY | cut -d ':' -f 1)
+          PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
+          PROJECT_NAME=$(echo $REPO_FULL_PATH | cut -d '/' -f 2)
+          if [ $PROJECT_NAME == "manifests" ]; then
+            cd .repo/manifests
+            echo "git fetch origin pull/$PR_NUMBER/head:pr-branch"
+            git fetch origin pull/$PR_NUMBER/head:pr-branch                                                                          
+            echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
+            set +e
+            cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) >> $cp_log 2>&1)
+            cp_pr_code=$?
+            if [ $cp_pr_code -ne 0 ]; then
+              cp_code=1
+            fi
+            echo $cp_pr_result
+            cd -                                                                                                                                                  
+            ~/bin/repo sync -c -d --no-tags -j12
+            if [ $? -ne 0 ]; then
+              repo_sync_code=1
+            fi
+          else
+            manifest_content=$(cat .repo/manifests/openvela.xml)
+            echo $manifest_content
+            REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"$PROJECT_NAME\"" | awk -F'"' '{print $2}')
+            echo $REPO_PATH
+            cd $REPO_PATH
+            echo "git fetch openvela pull/$PR_NUMBER/head:pr-branch"
+            git fetch openvela pull/$PR_NUMBER/head:pr-branch
+            echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
+            set +e
+            cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) >> $cp_log 2>&1)
+            cp_pr_code=$?
+            if [ $cp_pr_code -ne 0 ]; then
+              cp_code=1
+            fi
+            echo $cp_pr_result
+            cd -
+          fi
+        done
+        echo "REPO_SYNC_CODE=$repo_sync_code" >> $GITHUB_ENV
+        echo "CP_PR_CODE=$cp_code" >> $GITHUB_ENV
       continue-on-error: true
 
     - name: check cherry-pick pr result
@@ -125,7 +184,7 @@ jobs:
         if [ ${{ env.CP_PR_CODE }} == 0 ]; then
           echo "cherry-pick PR success and continue."
         else
-          echo "${{ env.CP_PR_RESULT }}" | grep "is a merge"
+          cat ${{ env.REPO_ROOT }}/cp.log | grep "is a merge"
           if [ $? -eq 0 ]; then
             echo "There's merge commit in your PR. Please use rebase insteadof merge."
             exit 1
@@ -212,3 +271,36 @@ jobs:
         else
           exit 1;
         fi
+
+    - name: Post Processing
+      if: always() # 确保无论之前的步骤成功或失败，都会执行
+      run: |
+        echo "Job status: ${{ job.status }}"
+
+        if [[ "${{ job.status }}" == "success" ]]; then
+          ci_status="success"
+        else
+          ci_status="failure"
+        fi
+        for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
+          REPO_NAME=$(echo $DEPENDENCY | cut -d ':' -f 1)
+          PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
+          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
+          if [[ -z "$LATEST_SHA" ]]; then
+            echo "No commits found for PR #$PR_NUMBER or invalid API response."
+            exit 1
+          fi
+          set -x
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
+            -d '{
+              "state": '"\"$ci_status\""',
+              "description": "CI '"$ci_status"'",
+              "context": "CI triggered by ${{ github.repository }}#${{ github.event.pull_request.number }}",
+              "target_url": "${{ env.CURRENT_ACTION_URL }}"
+            }'
+          set +x
+        done
