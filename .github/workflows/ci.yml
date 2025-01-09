@@ -38,7 +38,10 @@ jobs:
       run: |
         set -x
         # 获取当前 PR 的描述
-        DEPENDS_ON=$(echo "${{ github.event.pull_request.body }}" | grep -oP 'depends-on:\K(.*)' | sed 's/^ *//;s/ *$//')
+        cat > pull_request.body.txt <<EOF
+        ${{ github.event.pull_request.body }}
+        EOF
+        DEPENDS_ON=$(grep -oP 'depends-on:\K(.*)' pull_request.body.txt | sed 's/^ *//;s/ *$//')
         echo "PR DEPENDS_ON: $DEPENDS_ON"
         ALL_PR="$DEPENDS_ON ${{ github.repository }}:${{ github.event.pull_request.number }}"
         manifest_part=$(echo "$ALL_PR" | grep -o 'open-vela/manifests[^ ]*') || true
