@@ -121,7 +121,7 @@ jobs:
         df -h
 
     - name: Fetch PR
-      if: ${{ github.event_name == 'pull_request' }}
+      if: ${{ github.event_name == 'pull_request_target' }}
       run: |
         current_path=$(pwd)
         echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
