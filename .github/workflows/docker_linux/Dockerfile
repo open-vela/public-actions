@@ -332,6 +332,9 @@ RUN apt-get update -qq && DEBIAN_FRONTEND="noninteractive" TZ=Etc/UTC apt-get in
   tclsh \
   kconfig-frontends \
   jq \
+  black>=22.1.0 \
+  flake8 \
+  isort \
   git-lfs
 RUN git lfs install
 RUN git lfs --version
