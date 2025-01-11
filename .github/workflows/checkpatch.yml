@@ -50,7 +50,7 @@ jobs:
             echo "::add-matcher::nuttx/.github/nxstyle.json"
             python -m venv .venv
             source .venv/bin/activate
-            pip install cmake-format
+            pip install cmake-format black flake8 isort
             echo "../nuttx/tools/checkpatch.sh -u -m -g $commits"
             bash ../nuttx/tools/checkpatch.sh -u -m -g $commits
           else
