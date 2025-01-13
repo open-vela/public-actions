@@ -1,0 +1,26 @@
+# 使用 Apache NuttX 的 Docker 镜像作为基础镜像
+FROM ghcr.io/apache/nuttx/apache-nuttx-ci-linux
+
+# 更新包列表并安装 Open Vela Dockerfile 中独有的工具
+RUN apt-get update
+RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
+    build-essential \
+    cmake \
+    git \
+    libgl1-mesa-glx \
+    libncurses5-dev \
+    libncursesw5-dev \
+    libssl-dev \
+    python3 \
+    python3-pip \
+    curl \
+    jq \
+    git-lfs
+RUN git lfs install
+RUN git lfs --version
+RUN pip3 install matplotlib==3.6.2
+RUN pip3 install html-table
+RUN rm -rf /var/lib/apt/lists/*
+
+# 设置容器启动时执行的命令
+CMD ["/bin/bash"]
