@@ -79,7 +79,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .github/workflows/docker_linux
-          dockerfile: Dockerfile_from_apache
+          file: .github/workflows/docker_linux/Dockerfile_from_apache
           platforms: linux/amd64
           push: ${{ github.ref == 'refs/heads/trunk' }}
           tags: ${{ env.IMAGE_TAG }}
