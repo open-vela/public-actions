@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-name: Docker-Linux_From_Apache
+name: Docker-Linux_From_Apache-Nuttx
 
 on:
   push:
@@ -23,11 +23,11 @@ on:
     branches:
       - trunk
     paths:
-      - '.github/workflows/docker_linux_from_apache.yml'
-      - '.github/workflows/docker_linux/Dockerfile_from_apache'
+      - '.github/workflows/docker_linux_from_apache-nuttx.yml'
+      - '.github/workflows/docker_linux/Dockerfile_from_apache-nuttx'
 
 env:
-  IMAGE_NAME: openvela-ci-linux_from_apache
+  IMAGE_NAME: openvela-ci-linux_from_apache-nuttx
 
 concurrency:
   group: docker-${{ github.event.pull_request.number || github.ref }}
@@ -42,7 +42,7 @@ jobs:
   push:
     runs-on: ubuntu-latest
     env:
-      IMAGE_TAG: ghcr.io/open-vela/openvela-ci-linux_from_apache
+      IMAGE_TAG: ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -79,7 +79,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .github/workflows/docker_linux
-          file: .github/workflows/docker_linux/Dockerfile_from_apache
+          file: .github/workflows/docker_linux/Dockerfile_from_apache-nuttx
           platforms: linux/amd64
           push: ${{ github.ref == 'refs/heads/trunk' }}
           tags: ${{ env.IMAGE_TAG }}
