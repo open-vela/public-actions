@@ -204,14 +204,14 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}                                                                                                                                                                         
                                                                                                                                                                                                                          
     - name: Docker Pull                                                                                                                                                                                                  
-      run: docker pull ghcr.io/open-vela/openvela-ci-linux                                                                                                                                                                                                                                                                                            
+      run: docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
 
     - name: Run CI tasks inside Docker container
       run: |
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux:latest \
+          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
           /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8"                                                                                                                                                                                                                     
 
     - name: Upload goldfish-armeabi-v7a-ap Artifact
@@ -233,7 +233,7 @@ jobs:
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux:latest \
+          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
           /bin/bash -c "./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest -e -Werror -j8"
 
     - name: Run autotest tasks inside Docker container
@@ -241,7 +241,7 @@ jobs:
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux:latest \
+          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
           /bin/bash -c "cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json"
 
     - name: Check autotest result
