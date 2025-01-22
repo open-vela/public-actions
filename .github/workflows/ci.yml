@@ -206,18 +206,40 @@ jobs:
     - name: Docker Pull                                                                                                                                                                                                  
       run: docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
 
-    - name: Run CI tasks inside Docker container
+    - name: Run CI tasks inside Docker container(goldfish-armeabi-v7a-ap)
       run: |
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8"                                                                                                                                                                                                                     
+          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-armeabi-v7a-ap Artifact
       uses: actions/upload-artifact@v3
       with:
         name: goldfish-armeabi-v7a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
+        path: nuttx/nuttx
+
+    - name: Clean
+      run: |
+        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+      continue-on-error: true
+
+    - name: Run CI tasks inside Docker container(goldfish-x86_64-ap)
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap -e -Werror -j8 "                                                                                                                                                                                                                    
+
+    - name: Upload goldfish-x86_64-ap Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: goldfish-x86_64-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
         path: nuttx/nuttx
 
     - name: Clean
