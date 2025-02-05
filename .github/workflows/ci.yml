@@ -215,7 +215,7 @@ jobs:
           /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-armeabi-v7a-ap Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: goldfish-armeabi-v7a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
         path: nuttx/nuttx
@@ -237,7 +237,7 @@ jobs:
           /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-x86_64-ap Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: goldfish-x86_64-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
         path: nuttx/nuttx
@@ -283,7 +283,7 @@ jobs:
         echo "::set-output name=AUTOTEST_RESULT::${result}"
 
     - name: Upload Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: goldfish-armeabi-v7a-ap-citest_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
         path: output/
