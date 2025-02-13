@@ -38,7 +38,7 @@ jobs:
       run: |
         set -x
         # 获取当前 PR 的描述
-        cat > pull_request.body.txt <<EOF
+        cat > pull_request.body.txt <<'EOF'
         ${{ github.event.pull_request.body }}
         EOF
         DEPENDS_ON=$(grep -oP 'depends-on:\K(.*)' pull_request.body.txt | sed 's/^ *//;s/ *$//')
