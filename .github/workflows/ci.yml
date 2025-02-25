@@ -41,9 +41,14 @@ jobs:
         cat > pull_request.body.txt <<'EOF'
         ${{ github.event.pull_request.body }}
         EOF
-        DEPENDS_ON=$(grep -oP 'depends-on:\K(.*)' pull_request.body.txt | sed 's/^ *//;s/ *$//')
+        DEPENDS_ON=$(grep -oP 'depends-on:\s*\[[^]]+\]' pull_request.body.txt | sed 's/^ *//;s/ *$//')
         echo "PR DEPENDS_ON: $DEPENDS_ON"
-        ALL_PR="$DEPENDS_ON ${{ github.repository }}:${{ github.event.pull_request.number }}"
+        DEPENDS_ON=$(echo "$DEPENDS_ON" | grep -oP '(?<=\[)[^]]+(?=\])')
+        DEPENDS_ON=$(echo $DEPENDS_ON | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        DEPENDS_ON=$(echo "$DEPENDS_ON" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
+        ALL_PR="$DEPENDS_ON ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+        ALL_PR=$(echo $ALL_PR | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+        ALL_PR=$(echo "$ALL_PR" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
         manifest_part=$(echo "$ALL_PR" | grep -o 'open-vela/manifests[^ ]*') || true
         if [ "$manifest_part"X != ""X ]; then
           without_manifest_pr=$(echo "$ALL_PR" | sed "s|$manifest_part||" | xargs)
@@ -53,8 +58,8 @@ jobs:
         echo "DEPENDS_ON=$DEPENDS_ON" >> $GITHUB_ENV
     
         for DEPENDENCY in $DEPENDS_ON; do
-          REPO_NAME=$(echo $DEPENDENCY | cut -d ':' -f 1)
-          PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
+          REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
+          PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
           PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
@@ -71,6 +76,12 @@ jobs:
               "context": "CI triggered by other PR",
               "target_url": "${{ env.CURRENT_ACTION_URL }}"
             }'
+          COMMENT_BODY="CI started by ${{ github.repository }}/pull/${{ github.event.pull_request.number }}.\n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
+            -d "{\"body\": \"$COMMENT_BODY\"}"
         done
   
     - name: Download and install repo
@@ -130,15 +141,21 @@ jobs:
         set -x
         repo_sync_code=0
         cp_code=0
+        fetch_log=$current_path/fetch.log
         cp_log=$current_path/cp.log
         for DEPENDENCY in ${{ env.ALL_PR }}; do
-          REPO_FULL_PATH=$(echo $DEPENDENCY | cut -d ':' -f 1)
-          PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
+          REPO_FULL_PATH=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
+          PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
           PROJECT_NAME=$(echo $REPO_FULL_PATH | cut -d '/' -f 2)
           if [ $PROJECT_NAME == "manifests" ]; then
             cd .repo/manifests
             echo "git fetch origin pull/$PR_NUMBER/head:pr-branch"
-            git fetch origin pull/$PR_NUMBER/head:pr-branch                                                                          
+            fetch_pr_result=$(git fetch origin pull/$PR_NUMBER/head:pr-branch >> $fetch_log 2>&1)
+            fetch_pr_code=$?
+            if [ $fetch_pr_code -ne 0 ]; then
+              fetch_code=1
+            fi
+            echo $fetch_pr_result
             echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
             set +e
             cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) >> $cp_log 2>&1)
@@ -159,7 +176,12 @@ jobs:
             echo $REPO_PATH
             cd $REPO_PATH
             echo "git fetch openvela pull/$PR_NUMBER/head:pr-branch"
-            git fetch openvela pull/$PR_NUMBER/head:pr-branch
+            fetch_pr_result=$(git fetch openvela pull/$PR_NUMBER/head:pr-branch >> $fetch_log 2>&1)
+            fetch_pr_code=$?
+            if [ $fetch_pr_code -ne 0 ]; then
+              fetch_code=1
+            fi
+            echo $fetch_pr_result
             echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
             set +e
             cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) >> $cp_log 2>&1)
@@ -172,6 +194,7 @@ jobs:
           fi
         done
         echo "REPO_SYNC_CODE=$repo_sync_code" >> $GITHUB_ENV
+        echo "FETCH_PR_CODE=$fetch_code" >> $GITHUB_ENV
         echo "CP_PR_CODE=$cp_code" >> $GITHUB_ENV
       continue-on-error: true
 
@@ -183,16 +206,23 @@ jobs:
         else
           echo "repo sync after cherry-pick manifest PR success."
         fi
-        if [ ${{ env.CP_PR_CODE }} == 0 ]; then
+        if [ ${{ env.FETCH_PR_CODE }}X == 0X ] && [ ${{ env.CP_PR_CODE }}X == 0X ] ; then
           echo "cherry-pick PR success and continue."
         else
-          cat ${{ env.REPO_ROOT }}/cp.log | grep "is a merge"
-          if [ $? -eq 0 ]; then
-            echo "There's merge commit in your PR. Please use rebase insteadof merge."
+          if [ ${{ env.FETCH_PR_CODE }}X != 0X ]; then
+            cat ${{ env.REPO_ROOT }}/fetch.log
+            echo "fetch PR failed"
             exit 1
           else
-            echo "cherry-pick PR failed with error message: ${{ env.CP_PR_RESULT }}"
-            exit 1
+            cat ${{ env.REPO_ROOT }}/cp.log | grep "is a merge"
+            if [ $? -eq 0 ]; then
+              echo "There's merge commit in your PR. Please use rebase insteadof merge."
+              exit 1
+            else
+              cat ${{ env.REPO_ROOT }}/cp.log
+              echo "cherry-pick PR failed"
+              exit 1
+            fi
           fi
         fi
 
@@ -307,8 +337,8 @@ jobs:
           ci_status="failure"
         fi
         for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
-          REPO_NAME=$(echo $DEPENDENCY | cut -d ':' -f 1)
-          PR_NUMBER=$(echo $DEPENDENCY | cut -d ':' -f 2)
+          REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
+          PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
           PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
@@ -326,5 +356,11 @@ jobs:
               "context": "CI triggered by other PR",
               "target_url": "${{ env.CURRENT_ACTION_URL }}"
             }'
+          COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
+            -d "{\"body\": \"$COMMENT_BODY\"}"
           set +x
         done
