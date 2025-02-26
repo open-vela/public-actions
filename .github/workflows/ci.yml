@@ -43,7 +43,7 @@ jobs:
         EOF
         DEPENDS_ON=$(grep -oP 'depends-on:\s*\[[^]]+\]' pull_request.body.txt | sed 's/^ *//;s/ *$//')
         echo "PR DEPENDS_ON: $DEPENDS_ON"
-        DEPENDS_ON=$(echo "$DEPENDS_ON" | grep -oP '(?<=\[)[^]]+(?=\])')
+        DEPENDS_ON=$(echo "$DEPENDS_ON" | grep -oP '(?<=\[)[^]]+(?=\])') || true
         DEPENDS_ON=$(echo $DEPENDS_ON | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         DEPENDS_ON=$(echo "$DEPENDS_ON" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
         ALL_PR="$DEPENDS_ON ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
