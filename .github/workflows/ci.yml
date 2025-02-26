@@ -140,6 +140,7 @@ jobs:
         git config --global user.name "openvela-robot"
         set -x
         repo_sync_code=0
+        fetch_code=0
         cp_code=0
         fetch_log=$current_path/fetch.log
         cp_log=$current_path/cp.log
