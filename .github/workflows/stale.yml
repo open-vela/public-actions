@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: '30 1 * * *'
 
+on:
+  workflow_call:
+
+
 jobs:
   stale:
     runs-on: ubuntu-latest
