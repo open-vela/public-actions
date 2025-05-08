@@ -60,14 +60,14 @@ jobs:
         for DEPENDENCY in $DEPENDS_ON; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
           PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
             exit 1
           fi
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
             -d '{
@@ -78,7 +78,7 @@ jobs:
             }'
           COMMENT_BODY="CI started by ${{ github.repository }}/pull/${{ github.event.pull_request.number }}.\n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
             -d "{\"body\": \"$COMMENT_BODY\"}"
@@ -340,7 +340,7 @@ jobs:
         for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
           PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
@@ -348,7 +348,7 @@ jobs:
           fi
           set -x
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
             -d '{
@@ -359,7 +359,7 @@ jobs:
             }'
           COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
             -d "{\"body\": \"$COMMENT_BODY\"}"
