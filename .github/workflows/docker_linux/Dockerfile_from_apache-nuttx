@@ -15,7 +15,8 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
     python3-pip \
     curl \
     jq \
-    git-lfs
+    git-lfs \
+    dosfstools
 RUN git lfs install
 RUN git lfs --version
 RUN pip3 install matplotlib==3.6.2
