@@ -317,7 +317,7 @@ jobs:
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
         mkdir package_back
-        cp nuttx/nuttx nuttx/vela_*.bin nuttx/vela_system.img nuttx/.config package_back
+        cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
         sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
         cp package_back/* nuttx/
       continue-on-error: true
