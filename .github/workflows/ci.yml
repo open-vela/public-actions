@@ -311,6 +311,17 @@ jobs:
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
           /bin/bash -c "./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest -e -Werror -j8"
 
+    - name: Clean
+      run: |
+        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        mkdir package_back
+        cp nuttx/nuttx nuttx/vela_*.bin nuttx/vela_ap.elf package_back
+        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+        cp package_back/* nuttx/
+      continue-on-error: true
+
     - name: Run autotest tasks inside Docker container
       run: |
         docker run --rm \
