@@ -321,6 +321,7 @@ jobs:
         cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
         sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
         rm -rf .repo
+        rm -rf prebuilts/clang apps
       continue-on-error: true
 
     - name: Run autotest tasks inside Docker container
