@@ -256,7 +256,7 @@ jobs:
         echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
-        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
       continue-on-error: true
 
     - name: Run CI tasks inside Docker container(goldfish-x86_64-ap)
@@ -278,7 +278,7 @@ jobs:
         echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
-        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
       continue-on-error: true
 
     - name: Run CI tasks inside Docker container(stm32h750b-dk:lvgl)
@@ -301,7 +301,7 @@ jobs:
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
         df -h
-        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
       continue-on-error: true
 
     - name: Run test build inside Docker container
@@ -319,7 +319,7 @@ jobs:
         chmod a+x ~/bin/repo
         mkdir package_back
         cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
-        sudo ~/bin/repo forall -v -c git clean -dfx; git reset --hard HEAD
+        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
       continue-on-error: true
 
     - name: Run autotest tasks inside Docker container
