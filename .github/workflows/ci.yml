@@ -243,7 +243,7 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8 "                                                                                                                                                                                                                    
+          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-armeabi-v7a-ap Artifact
       uses: actions/upload-artifact@v4
@@ -265,7 +265,7 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap -e -Werror -j8 "                                                                                                                                                                                                                    
+          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-x86_64-ap Artifact
       uses: actions/upload-artifact@v4
@@ -287,7 +287,7 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "ls -atl && ./build.sh stm32h750b-dk:lvgl -e -Werror -j8 "
+          /bin/bash -c "df -h && ls -atl && ./build.sh stm32h750b-dk:lvgl -e -Werror -j8 "
 
     - name: Upload stm32h750b-dk lvgl Artifact
       uses: actions/upload-artifact@v4
