@@ -281,6 +281,29 @@ jobs:
         sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
       continue-on-error: true
 
+    - name: Run CI tasks inside Docker container(goldfish-arm64-v8a-ap)
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-arm64-v8a-ap -e -Werror -j8 "
+
+    - name: Upload goldfish-arm64-v8a-ap Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: goldfish-arm64-v8a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
+        path: nuttx/nuttx
+
+    - name: Clean
+      run: |
+        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
+      continue-on-error: true
+
+
     - name: Run CI tasks inside Docker container(stm32h750b-dk:lvgl)
       run: |
         docker run --rm \
