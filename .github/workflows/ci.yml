@@ -353,7 +353,7 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "free -m && df -h && cp package_back/* nuttx/ && ls -atl nuttx && cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json"
+          /bin/bash -c "free -m && df -h && cp package_back/* nuttx/ && ls -atl nuttx && cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json --maxfail=10"
 
     - name: Check autotest result
       id: autotest_result
