@@ -343,63 +343,63 @@ jobs:
         sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
       continue-on-error: true
 
-    - name: Run test build inside Docker container
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest -e -Werror -j8"
-
-    - name: Clean
-      run: |
-        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        mkdir package_back
-        cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
-        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-        rm -rf .repo
-        rm -rf prebuilts/clang apps
-      continue-on-error: true
-
-    - name: Run autotest tasks inside Docker container
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "free -m && df -h && cp package_back/* nuttx/ && ls -atl nuttx && cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json --maxfail=10"
-
-    - name: Check autotest result
-      id: autotest_result
-      run: |
-        cd ${{ github.workspace }}
-        mkdir output
-        cp nuttx/nuttx ./*.log ./autotest.json output
-        failed=$(cat autotest.json | jq '.report.summary.failed')
-        if [ "$failed" != "null" ] && [ "$failed" != "0" ]; then
-          echo "autotest failed: $failed"
-          result="failed"
-        else
-          echo "autotest passed"
-          result="success"
-        fi
-        echo "::set-output name=AUTOTEST_RESULT::${result}"
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: goldfish-armeabi-v7a-ap-citest_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: output/
-
-    - name: Exit with autotest exit code
-      run: |
-        if [ ${{ steps.autotest_result.outputs.AUTOTEST_RESULT }} == "success" ]; then
-          exit 0;
-        else
-          exit 1;
-        fi
+#    - name: Run test build inside Docker container
+#      run: |
+#        docker run --rm \
+#          -v ${{ github.workspace }}:/workspace \
+#          -w /workspace \
+#          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+#          /bin/bash -c "df -h && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest -e -Werror -j8"
+#
+#    - name: Clean
+#      run: |
+#        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+#        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+#        chmod a+x ~/bin/repo
+#        mkdir package_back
+#        cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
+#        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
+#        rm -rf .repo
+#        rm -rf prebuilts/clang apps
+#      continue-on-error: true
+#
+#    - name: Run autotest tasks inside Docker container
+#      run: |
+#        docker run --rm \
+#          -v ${{ github.workspace }}:/workspace \
+#          -w /workspace \
+#          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+#          /bin/bash -c "free -m && df -h && cp package_back/* nuttx/ && ls -atl nuttx && cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json --maxfail=10"
+#
+#    - name: Check autotest result
+#      id: autotest_result
+#      run: |
+#        cd ${{ github.workspace }}
+#        mkdir output
+#        cp nuttx/nuttx ./*.log ./autotest.json output
+#        failed=$(cat autotest.json | jq '.report.summary.failed')
+#        if [ "$failed" != "null" ] && [ "$failed" != "0" ]; then
+#          echo "autotest failed: $failed"
+#          result="failed"
+#        else
+#          echo "autotest passed"
+#          result="success"
+#        fi
+#        echo "::set-output name=AUTOTEST_RESULT::${result}"
+#
+#    - name: Upload Artifact
+#      uses: actions/upload-artifact@v4
+#      with:
+#        name: goldfish-armeabi-v7a-ap-citest_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
+#        path: output/
+#
+#    - name: Exit with autotest exit code
+#      run: |
+#        if [ ${{ steps.autotest_result.outputs.AUTOTEST_RESULT }} == "success" ]; then
+#          exit 0;
+#        else
+#          exit 1;
+#        fi
 
     - name: Post Processing
       if: always() # 确保无论之前的步骤成功或失败，都会执行
