@@ -259,13 +259,13 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap -e -Werror -j8 "                                                                                                                                                                                                                    
+          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap --cmake -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-armeabi-v7a-ap Artifact
       uses: actions/upload-artifact@v4
       with:
         name: goldfish-armeabi-v7a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: nuttx/nuttx
+        path: cmake_out/vela_goldfish-armeabi-v7a-ap/nuttx
 
     - name: Clean
       run: |
@@ -281,13 +281,13 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap -e -Werror -j8 "                                                                                                                                                                                                                    
+          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap --cmake -e -Werror -j8 "                                                                                                                                                                                                                    
 
     - name: Upload goldfish-x86_64-ap Artifact
       uses: actions/upload-artifact@v4
       with:
         name: goldfish-x86_64-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: nuttx/nuttx
+        path: cmake_out/vela_goldfish-x86_64-ap/nuttx
 
     - name: Clean
       run: |
@@ -303,13 +303,13 @@ jobs:
           -v ${{ github.workspace }}:/workspace \
           -w /workspace \
           ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-arm64-v8a-ap -e -Werror -j8 "
+          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-arm64-v8a-ap --cmake -e -Werror -j8 "
 
     - name: Upload goldfish-arm64-v8a-ap Artifact
       uses: actions/upload-artifact@v4
       with:
         name: goldfish-arm64-v8a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: nuttx/nuttx
+        path: cmake_out/vela_goldfish-arm64-v8a-ap/nuttx
 
     - name: Clean
       run: |
@@ -320,48 +320,48 @@ jobs:
       continue-on-error: true
 
 
-    - name: Run CI tasks inside Docker container(stm32h750b-dk:lvgl)
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh stm32h750b-dk:lvgl -e -Werror -j8 "
-
-    - name: Upload stm32h750b-dk lvgl Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: stm32h750b-dk_lvgs_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: nuttx/nuttx
-
-    - name: Clean
-      run: |
-        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        df -h
-        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-      continue-on-error: true
-
-#    - name: Run test build inside Docker container
+#    - name: Run CI tasks inside Docker container(stm32h750b-dk:lvgl)
 #      run: |
 #        docker run --rm \
 #          -v ${{ github.workspace }}:/workspace \
 #          -w /workspace \
 #          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-#          /bin/bash -c "df -h && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest -e -Werror -j8"
+#          /bin/bash -c "df -h && ls -atl && ./build.sh stm32h750b-dk:lvgl -e -Werror -j8 "
+#
+#    - name: Upload stm32h750b-dk lvgl Artifact
+#      uses: actions/upload-artifact@v4
+#      with:
+#        name: stm32h750b-dk_lvgs_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
+#        path: nuttx/nuttx
 #
 #    - name: Clean
 #      run: |
 #        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
 #        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
 #        chmod a+x ~/bin/repo
-#        mkdir package_back
-#        cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
+#        df -h
 #        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-#        rm -rf .repo
-#        rm -rf prebuilts/clang apps
 #      continue-on-error: true
+
+    - name: Run test build inside Docker container
+      run: |
+        docker run --rm \
+          -v ${{ github.workspace }}:/workspace \
+          -w /workspace \
+          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+          /bin/bash -c "df -h && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest --cmake -e -Werror -j8"
+
+    - name: Clean
+      run: |
+        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        mkdir package_back
+        #cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
+        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
+        rm -rf .repo
+        rm -rf prebuilts/clang apps
+      continue-on-error: true
 #
 #    - name: Run autotest tasks inside Docker container
 #      run: |
