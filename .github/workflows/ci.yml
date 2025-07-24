@@ -283,7 +283,7 @@ jobs:
                 break
               fi
               REPO_PATH=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'path="' '{print $2}' | awk -F'"' '{print $1}')
-              if [ "$REPO_NAME"X == ""X ]; then
+              if [ "$REPO_PATH"X == ""X ]; then
                 REPO_PATH=$REPO_NAME
               fi
               echo $REPO_PATH
