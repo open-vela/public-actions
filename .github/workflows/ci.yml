@@ -343,7 +343,7 @@ jobs:
 #        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
 #      continue-on-error: true
 
-    - name: Run test build inside Docker container
+    - name: Run test build inside Docker container(goldfish-armeabi-v7a-ap-citest)
       run: |
         docker run --rm \
           -v ${{ github.workspace }}:/workspace \
