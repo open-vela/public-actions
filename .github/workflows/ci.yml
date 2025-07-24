@@ -234,6 +234,7 @@ jobs:
           git config --global user.email "openvela-robot@xiaomi.com"
           git config --global user.name "openvela-robot"
           set -x
+          repo_exist=0
           repo_sync_code=0
           fetch_code=0
           cp_code=0
@@ -276,7 +277,15 @@ jobs:
             else
               manifest_content=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }})
               #echo $manifest_content
+              REPO_NAME=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'name="' '{print $2}' | awk -F'"' '{print $1}')
+              if [ "$REPO_NAME"X == ""X ]; then
+                repo_exist=1
+                break
+              fi
               REPO_PATH=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'path="' '{print $2}' | awk -F'"' '{print $1}')
+              if [ "$REPO_NAME"X == ""X ]; then
+                REPO_PATH=$REPO_NAME
+              fi
               echo $REPO_PATH
               cd $REPO_PATH
               echo "git fetch openvela pull/$PR_NUMBER/head:pr-branch"
@@ -284,6 +293,7 @@ jobs:
               fetch_pr_code=$?
               if [ $fetch_pr_code -ne 0 ]; then
                 fetch_code=1
+                break
               fi
               echo $fetch_pr_result
               git branch -vv
@@ -303,6 +313,7 @@ jobs:
               cd -
             fi
           done
+          echo "REPO_EXIST=$repo_exist" >> $GITHUB_ENV
           echo "REPO_SYNC_CODE=$repo_sync_code" >> $GITHUB_ENV
           echo "FETCH_PR_CODE=$fetch_code" >> $GITHUB_ENV
           echo "CP_PR_CODE=$cp_code" >> $GITHUB_ENV
@@ -316,6 +327,10 @@ jobs:
             exit 1
           else
             echo "repo sync after cherry-pick manifest PR success."
+          fi
+          if [ ${{ env.REPO_EXIST }}X != 0X ]; then
+            echo "repo is not exist, please check."
+            exit 1
           fi
           if [ ${{ env.CODE_BASE_CHECK }}X != 0X ]; then
             echo "PR code base need to rebase with source repo."
