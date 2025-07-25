@@ -328,11 +328,11 @@ jobs:
           else
             echo "repo sync after cherry-pick manifest PR success."
           fi
-          if [ ${{ env.REPO_EXIST }}X != 0X ]; then
+          if [ -n "${{ env.REPO_EXIST }}" ] && [ ${{ env.REPO_EXIST }}X != 0X ]; then
             echo "repo is not exist, please check."
             exit 1
           fi
-          if [ ${{ env.CODE_BASE_CHECK }}X != 0X ]; then
+          if [ -n "${{ env.CODE_BASE_CHECK }}" ] && [ ${{ env.CODE_BASE_CHECK }}X != 0X ]; then
             echo "PR code base need to rebase with source repo."
             exit 1
           fi
@@ -386,9 +386,9 @@ jobs:
               /bin/bash -c "pwd && touch $task && df -h && ls -atl && $build_cmd && ls -atl nuttx"
 
             echo "=== Backup CI results for $task ==="
-            ci_artifact_name="${{ matrix.group }}_${task}_${{ needs.setup.outputs.TRIGGER_REPO_NAME }}-${{ github.event.pull_request.number }}"
+            ci_artifact_name="${{ matrix.group }}/${task//:/_}_${{ needs.setup.outputs.TRIGGER_REPO_NAME }}-${{ github.event.pull_request.number }}"
             echo $ci_artifact_name
-            mkdir $ci_artifact_name
+            mkdir -p $ci_artifact_name || true
             pwd
             ls -atl .
             if [[ "$task" == *:* ]]; then
@@ -415,7 +415,7 @@ jobs:
               echo "Check autotest result: $task"
               cd ${{ github.workspace }}
               mkdir output
-              cp nuttx/nuttx ./*.log ./autotest.json output
+              cp ./*.log ./autotest.json $ci_artifact_name
               failed=$(cat autotest.json | jq '.report.summary.failed')
               if [ "$failed" != "null" ] && [ "$failed" != "0" ]; then
                 echo "autotest failed: $failed"
@@ -425,9 +425,15 @@ jobs:
                 echo "autotest passed"
                 result="success"
               fi
-              echo "::set-output name=AUTOTEST_RESULT::${result}"
             fi
           done
+
+      - name: Archive CI Build Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build_Package_${{ matrix.group }}
+          path: |
+            ${{ matrix.group }}
 
       - name: Check status
         id: check
