@@ -172,7 +172,7 @@ jobs:
         group: [ubuntu22-01, ubuntu22-02]  # 定义组
         include:
           - group: ubuntu22-01
-            tasks: [goldfish-arm64-v8a-ap, goldfish-armeabi-v7a-ap, goldfish-x86_64-ap, stm32h750b-dk:lvgl]  # 第一组任务
+            tasks: [goldfish-arm64-v8a-ap, goldfish-armeabi-v7a-ap, goldfish-x86_64-ap, stm32h750b-dk:lvgl, vendor/espressif/boards/esp32s3/esp32s3-box/configs/openvela, vendor/espressif/boards/esp32s3/esp32s3-eye/configs/openvela]  # 第一组任务
           - group: ubuntu22-02
             tasks: [goldfish-armeabi-v7a-ap-citest]  # 第二组任务
       fail-fast: false
@@ -372,7 +372,7 @@ jobs:
           for task in ${{ join(matrix.tasks, ' ') }}; do
             rm -rf output || true
             echo "=== Starting task: $task ==="
-            if [[ "$task" == *:* ]]; then
+            if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
               build_cmd="./build.sh $task -e -Werror -j8"
             else
               build_cmd="./build.sh vendor/openvela/boards/vela/configs/$task -e -Werror -j8"
@@ -391,7 +391,7 @@ jobs:
             mkdir -p $ci_artifact_name || true
             pwd
             ls -atl .
-            if [[ "$task" == *:* ]]; then
+            if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
               cp nuttx/nuttx nuttx/.config $ci_artifact_name
             else
               cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config $ci_artifact_name
