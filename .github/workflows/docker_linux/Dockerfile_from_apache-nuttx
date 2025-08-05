@@ -1,7 +1,7 @@
-# 使用 Apache NuttX 的 Docker 镜像作为基础镜像
+# Use Apache NuttX’s Docker image as the base image. Refer to its Dockerfile here: https://github.com/apache/nuttx/blob/master/tools/ci/docker/linux/Dockerfile
 FROM ghcr.io/apache/nuttx/apache-nuttx-ci-linux
 
-# 更新包列表并安装 Open Vela Dockerfile 中独有的工具
+# Install tools specific for openvela.
 RUN apt-get update
 RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
     build-essential \
@@ -25,5 +25,5 @@ RUN pip3 install matplotlib==3.6.2
 RUN pip3 install html-table
 RUN rm -rf /var/lib/apt/lists/*
 
-# 设置容器启动时执行的命令
+# Set the command to be executed when the container starts.
 CMD ["/bin/bash"]
