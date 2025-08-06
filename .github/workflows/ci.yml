@@ -12,12 +12,34 @@ on:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  CI:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      TRIGGER_REPO_NAME: ${{ steps.set-env.outputs.TRIGGER_REPO_NAME }}
+      TRIGGER_COMMIT_ID: ${{ steps.set-env.outputs.TRIGGER_COMMIT_ID }}
+      PR_INFO_FILE: ${{ steps.set-env.outputs.PR_INFO_FILE }}
+      SNAPSHOT: ${{ steps.set-env.outputs.SNAPSHOT }}
+      CURRENT_ACTION_URL: ${{ steps.set-env.outputs.CURRENT_ACTION_URL }}
+      ALL_PR: ${{ steps.parse-dependencies.outputs.ALL_PR }}
+      DEPENDS_ON: ${{ steps.parse-dependencies.outputs.DEPENDS_ON }}
     steps:
-    - name: Get Repo Name
+    - name: Set ENV
+      id: set-env
+      env:
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
       run: |
-          echo "REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+          echo "TRIGGER_REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
+          echo "TRIGGER_REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_OUTPUT
+          echo "TRIGGER_COMMIT_ID=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
+          echo "TRIGGER_COMMIT_ID=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+          echo "PR_INFO_FILE=pr_info_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          echo "PR_INFO_FILE=pr_info_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "SNAPSHOT=snapshot_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_ENV
+          echo "SNAPSHOT=snapshot_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_ENV
+          echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_OUTPUT
 
     - name: Set up Python 3.8
       uses: actions/setup-python@v5
@@ -25,13 +47,8 @@ jobs:
         python-version: 3.8
 
     - name: Get Current Action URL
-      env:
-        GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_RUN_ID: ${{ github.run_id }}
-        GITHUB_SERVER_URL: ${{ github.server_url }}
       run: |
         echo "Current Action URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-        echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_ENV
 
     - name: Parse PR Description for Dependencies
       id: parse-dependencies
@@ -55,7 +72,10 @@ jobs:
           ALL_PR="$manifest_part $without_manifest_pr"
         fi
         echo "ALL_PR=$ALL_PR" >> $GITHUB_ENV
+        echo "ALL_PR=$ALL_PR" >> $GITHUB_OUTPUT
         echo "DEPENDS_ON=$DEPENDS_ON" >> $GITHUB_ENV
+        echo "DEPENDS_ON=$DEPENDS_ON" >> $GITHUB_OUTPUT
+        echo "$TRIGGER_REPO_NAME:$TRIGGER_COMMIT_ID" >> ${{ env.PR_INFO_FILE }}
     
         for DEPENDENCY in $DEPENDS_ON; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
@@ -66,6 +86,7 @@ jobs:
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
             exit 1
           fi
+          echo "$REPO_NAME:$LATEST_SHA" >> ${{ env.PR_INFO_FILE }}
           curl -X POST \
             -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
             -H "Accept: application/vnd.github.v3+json" \
@@ -109,22 +130,6 @@ jobs:
         sudo -E apt-get -qq clean
         df -h
 
-    - name: Free Disk Space (Ubuntu)
-      uses: jlumbroso/free-disk-space@main
-      with:
-        # this might remove tools that are actually needed,
-        # if set to "true" but frees about 6 GB
-        tool-cache: false
-        
-        # all of these default to true, but feel free to set to
-        # "false" if necessary for your workflow
-        android: true
-        dotnet: true
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
-
     - name: Verify repo installation
       run: |
         ~/bin/repo --version
@@ -137,7 +142,7 @@ jobs:
   
     - name: Repo Init
       run: |
-        ~/bin/repo init -u https://github.com/open-vela/manifests -b ${{ github.event.pull_request.base.ref }} -m openvela.xml --depth=1 --git-lfs
+        ~/bin/repo init -u https://github.com/open-vela/manifests -b ${{ github.event.pull_request.base.ref }} -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
         echo "REPO_INIT=true" >> $GITHUB_ENV
 
     - name: Repo Sync
@@ -145,297 +150,347 @@ jobs:
         df -h
         ~/bin/repo sync -c -d --no-tags -j12
         df -h
+        pwd && ls -atl .
+        ~/bin/repo manifest -r -o ${{ env.SNAPSHOT }}
 
-    - name: Fetch PR
-      if: ${{ github.event_name == 'pull_request_target' }}
-      run: |
-        current_path=$(pwd)
-        echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
-        echo $(ls -atl)
-        git config --global user.email "openvela-robot@xiaomi.com"
-        git config --global user.name "openvela-robot"
-        set -x
-        repo_sync_code=0
-        fetch_code=0
-        cp_code=0
-        fetch_log=$current_path/fetch.log
-        cp_log=$current_path/cp.log
-        for DEPENDENCY in ${{ env.ALL_PR }}; do
-          REPO_FULL_PATH=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
-          PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PROJECT_NAME=$(echo $REPO_FULL_PATH | cut -d '/' -f 2)
-          if [ $PROJECT_NAME == "manifests" ]; then
-            cd .repo/manifests
-            echo "git fetch origin pull/$PR_NUMBER/head:pr-branch"
-            fetch_pr_result=$(git fetch origin pull/$PR_NUMBER/head:pr-branch >> $fetch_log 2>&1)
-            fetch_pr_code=$?
-            if [ $fetch_pr_code -ne 0 ]; then
-              fetch_code=1
-            fi
-            echo $fetch_pr_result
-            echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
-            set +e
-            cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) >> $cp_log 2>&1)
-            cp_pr_code=$?
-            if [ $cp_pr_code -ne 0 ]; then
-              cp_code=1
-            fi
-            echo $cp_pr_result
-            cd -                                                                                                                                                  
-            ~/bin/repo sync -c -d --no-tags -j12
-            if [ $? -ne 0 ]; then
-              repo_sync_code=1
-            fi
-          else
-            manifest_content=$(cat .repo/manifests/openvela.xml)
-            echo $manifest_content
-            REPO_PATH=$(cat .repo/manifests/openvela.xml | grep "\"$PROJECT_NAME\"" | awk -F'"' '{print $2}')
-            echo $REPO_PATH
-            cd $REPO_PATH
-            echo "git fetch openvela pull/$PR_NUMBER/head:pr-branch"
-            fetch_pr_result=$(git fetch openvela pull/$PR_NUMBER/head:pr-branch >> $fetch_log 2>&1)
-            fetch_pr_code=$?
-            if [ $fetch_pr_code -ne 0 ]; then
-              fetch_code=1
-            fi
-            echo $fetch_pr_result
-            echo "git cherry-pick $(git rev-list --reverse HEAD..pr-branch)"
-            set +e
-            cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..pr-branch) >> $cp_log 2>&1)
-            cp_pr_code=$?
-            if [ $cp_pr_code -ne 0 ]; then
-              cp_code=1
-            fi
-            echo $cp_pr_result
-            cd -
-          fi
-        done
-        echo "REPO_SYNC_CODE=$repo_sync_code" >> $GITHUB_ENV
-        echo "FETCH_PR_CODE=$fetch_code" >> $GITHUB_ENV
-        echo "CP_PR_CODE=$cp_code" >> $GITHUB_ENV
-      continue-on-error: true
+    - name: Archive Snapshot and PR Info
+      uses: actions/upload-artifact@v4
+      with:
+        name: source_info
+        path: |
+          ${{ env.SNAPSHOT }}
+          ${{ env.PR_INFO_FILE }}
 
-    - name: check cherry-pick pr result
-      run: |
-        if [ -n "${{ env.REPO_SYNC_CODE }}" ] && [ ${{ env.REPO_SYNC_CODE }} != 0 ]; then
-          echo "repo sync after cherry-pick manifest PR failed."
-          exit 1
-        else
-          echo "repo sync after cherry-pick manifest PR success."
-        fi
-        if [ ${{ env.FETCH_PR_CODE }}X == 0X ] && [ ${{ env.CP_PR_CODE }}X == 0X ] ; then
-          echo "cherry-pick PR success and continue."
-        else
-          if [ ${{ env.FETCH_PR_CODE }}X != 0X ]; then
-            cat ${{ env.REPO_ROOT }}/fetch.log
-            echo "fetch PR failed"
+  # 并行执行的CI任务矩阵
+  ci-tasks:
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      DOCKER_BUILDKIT: 1
+    strategy:
+      matrix:
+        group: [ubuntu22-01, ubuntu22-02]  # 定义组
+        include:
+          - group: ubuntu22-01
+            tasks: [goldfish-arm64-v8a-ap@cmake, goldfish-armeabi-v7a-ap@cmake, goldfish-x86_64-ap@cmake, vendor/espressif/boards/esp32s3/esp32s3-box/configs/openvela, vendor/espressif/boards/esp32s3/esp32s3-eye/configs/openvela]  # 第一组任务
+          - group: ubuntu22-02
+            tasks: [goldfish-armeabi-v7a-ap-citest@cmake]  # 第二组任务
+      fail-fast: false
+    outputs:
+      status: ${{ steps.check.outputs.status }}
+      DEPENDS_ON: ${{ needs.setup.outputs.DEPENDS_ON }}
+      CURRENT_ACTION_URL: ${{ needs.setup.outputs.CURRENT_ACTION_URL }}
+    steps:
+      - name: Download Snapshot and PR Info
+        uses: actions/download-artifact@v4
+        with:
+          name: source_info
+          path: .
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+          
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Download and install repo
+        run: |
+          mkdir ~/bin
+          echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+    
+      - name: Repo Init
+        run: |
+          ~/bin/repo init -u https://github.com/open-vela/manifests -b ${{ github.event.pull_request.base.ref }} -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
+          cp ${{ needs.setup.outputs.SNAPSHOT }}  .repo/manifests/
+          echo "~/bin/repo init -m ${{ needs.setup.outputs.SNAPSHOT }} --group=default,platform-linux --depth=1 --git-lfs"
+          ~/bin/repo init -m ${{ needs.setup.outputs.SNAPSHOT }} --group=default,platform-linux --depth=1 --git-lfs
+          echo "REPO_INIT=true" >> $GITHUB_ENV
+
+      - name: Repo Sync
+        run: |
+          df -h
+          ~/bin/repo sync -c -d --no-tags -j12
+          df -h
+          pwd && ls -atl .
+
+      - name: Fetch PR
+        if: ${{ github.event_name == 'pull_request_target' }}
+        run: |
+          current_path=$(pwd)
+          echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
+          echo $(ls -atl)
+          git config --global user.email "openvela-robot@xiaomi.com"
+          git config --global user.name "openvela-robot"
+          set -x
+          repo_exist=0
+          repo_sync_code=0
+          fetch_code=0
+          cp_code=0
+          code_base_check=0
+          fetch_log=$current_path/fetch.log
+          cp_log=$current_path/cp.log
+          for DEPENDENCY in ${{ needs.setup.outputs.ALL_PR }}; do
+            REPO_FULL_PATH=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
+            PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
+            PROJECT_NAME=$(echo $REPO_FULL_PATH | cut -d '/' -f 2)
+            PR_COMMIT=$(cat ${{ needs.setup.outputs.PR_INFO_FILE }} | grep "${PROJECT_NAME}:" | awk -F':' '{print $2}')
+            if [ $PROJECT_NAME == "manifests" ]; then
+              cd .repo/manifests
+              echo "git fetch origin pull/$PR_NUMBER/head:pr-branch"
+              fetch_pr_result=$(git fetch origin pull/$PR_NUMBER/head:pr-branch >> $fetch_log 2>&1)
+              fetch_pr_code=$?
+              if [ $fetch_pr_code -ne 0 ]; then
+                fetch_code=1
+              fi
+              echo $fetch_pr_result
+              git branch -vv
+              echo "git merge-base -a pr-branch HEAD"
+              common_base_commit=$(git merge-base -a pr-branch HEAD || true)
+              if [ "$common_base_commit"X == ""X ]; then
+                code_base_check=1
+              fi
+              echo "git cherry-pick $(git rev-list --reverse HEAD..$PR_COMMIT)"
+              set +e
+              cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..$PR_COMMIT) >> $cp_log 2>&1)
+              cp_pr_code=$?
+              if [ $cp_pr_code -ne 0 ]; then
+                cp_code=1
+              fi
+              echo $cp_pr_result
+              cd -                                                                                                                                                  
+              ~/bin/repo sync -c -d --no-tags -j12
+              if [ $? -ne 0 ]; then
+                repo_sync_code=1
+              fi
+            else
+              manifest_content=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }})
+              #echo $manifest_content
+              REPO_NAME=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'name="' '{print $2}' | awk -F'"' '{print $1}')
+              if [ "$REPO_NAME"X == ""X ]; then
+                repo_exist=1
+                break
+              fi
+              REPO_PATH=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'path="' '{print $2}' | awk -F'"' '{print $1}')
+              if [ "$REPO_PATH"X == ""X ]; then
+                REPO_PATH=$REPO_NAME
+              fi
+              echo $REPO_PATH
+              cd $REPO_PATH
+              echo "git fetch openvela pull/$PR_NUMBER/head:pr-branch"
+              fetch_pr_result=$(git fetch openvela pull/$PR_NUMBER/head:pr-branch >> $fetch_log 2>&1)
+              fetch_pr_code=$?
+              if [ $fetch_pr_code -ne 0 ]; then
+                fetch_code=1
+                break
+              fi
+              echo $fetch_pr_result
+              git branch -vv
+              echo "git merge-base -a pr-branch HEAD"
+              common_base_commit=$(git merge-base -a pr-branch HEAD || true)
+              if [ "$common_base_commit"X == ""X ]; then
+                code_base_check=1
+              fi
+              echo "git cherry-pick $(git rev-list --reverse HEAD..$PR_COMMIT)"
+              set +e
+              cp_pr_result=$(git cherry-pick $(git rev-list --reverse HEAD..$PR_COMMIT) >> $cp_log 2>&1)
+              cp_pr_code=$?
+              if [ $cp_pr_code -ne 0 ]; then
+                cp_code=1
+              fi
+              echo $cp_pr_result
+              cd -
+            fi
+          done
+          echo "REPO_EXIST=$repo_exist" >> $GITHUB_ENV
+          echo "REPO_SYNC_CODE=$repo_sync_code" >> $GITHUB_ENV
+          echo "FETCH_PR_CODE=$fetch_code" >> $GITHUB_ENV
+          echo "CP_PR_CODE=$cp_code" >> $GITHUB_ENV
+          echo "CODE_BASE_CHECK=$code_base_check" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: check cherry-pick pr result
+        run: |
+          if [ -n "${{ env.REPO_SYNC_CODE }}" ] && [ ${{ env.REPO_SYNC_CODE }} != 0 ]; then
+            echo "repo sync after cherry-pick manifest PR failed."
             exit 1
           else
-            cat ${{ env.REPO_ROOT }}/cp.log | grep "is a merge"
-            if [ $? -eq 0 ]; then
-              echo "There's merge commit in your PR. Please use rebase insteadof merge."
+            echo "repo sync after cherry-pick manifest PR success."
+          fi
+          if [ -n "${{ env.REPO_EXIST }}" ] && [ ${{ env.REPO_EXIST }}X != 0X ]; then
+            echo "repo is not exist, please check."
+            exit 1
+          fi
+          if [ -n "${{ env.CODE_BASE_CHECK }}" ] && [ ${{ env.CODE_BASE_CHECK }}X != 0X ]; then
+            echo "PR code base need to rebase with source repo."
+            exit 1
+          fi
+          if [ ! -n "${{ env.FETCH_PR_CODE }}" ] || ([ ${{ env.FETCH_PR_CODE }}X == 0X ] && [ ${{ env.CP_PR_CODE }}X == 0X ]) ; then
+            echo "cherry-pick PR success and continue."
+          else
+            if [ ${{ env.FETCH_PR_CODE }}X != 0X ]; then
+              cat ${{ env.REPO_ROOT }}/fetch.log
+              echo "fetch PR failed"
               exit 1
             else
-              cat ${{ env.REPO_ROOT }}/cp.log
-              echo "cherry-pick PR failed"
-              exit 1
+              cat ${{ env.REPO_ROOT }}/cp.log | grep "is a merge"
+              if [ $? -eq 0 ]; then
+                echo "There's merge commit in your PR. Please use rebase insteadof merge."
+                exit 1
+              else
+                cat ${{ env.REPO_ROOT }}/cp.log
+                echo "cherry-pick PR failed"
+                exit 1
+              fi
             fi
           fi
-        fi
 
-    - name: Docker Login                                                                                                                                                                                                 
-      uses: docker/login-action@v3                                                                                                                                                                                       
-      with:                                                                                                                                                                                                              
-        registry: ghcr.io                                                                                                                                                                                                
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}                                                                                                                                                                         
-                                                                                                                                                                                                                         
-    - name: Docker Pull                                                                                                                                                                                                  
-      run: docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Run CI tasks inside Docker container(goldfish-armeabi-v7a-ap)
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap --cmake -e -Werror -j8 "                                                                                                                                                                                                                    
+      - name: Docker Pull
+        run: docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
 
-    - name: Upload goldfish-armeabi-v7a-ap Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: goldfish-armeabi-v7a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: cmake_out/vela_goldfish-armeabi-v7a-ap/nuttx
+      - name: Run CI tasks inside Docker container
+        run: |
+          artifacts=[]
+          for task in ${{ join(matrix.tasks, ' ') }}; do
+            rm -rf output || true
+            cmake_flag=""
+            cp_base_dir="nuttx"
+            echo "=== Starting task: $task ==="
+            if [[ "$task" == *@* ]]; then
+              cmake_flag="--cmake"
+              task=$(echo "$task" | awk -F '@' '{print $1}')
+              cp_base_dir="cmake_out/*"
+            fi
+            if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
+              build_cmd="./build.sh $task $cmake_flag -e -Werror -j8"
+            else
+              build_cmd="./build.sh vendor/openvela/boards/vela/configs/$task $cmake_flag -e -Werror -j8"
+            fi
+            echo $build_cmd
 
-    - name: Clean
-      run: |
-        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-      continue-on-error: true
+            docker run --rm \
+              -v ${{ github.workspace }}:/workspace \
+              -w /workspace \
+              ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+              /bin/bash -c "pwd && touch $task && df -h && ls -atl && $build_cmd && ls -atl nuttx"
 
-    - name: Run CI tasks inside Docker container(goldfish-x86_64-ap)
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-x86_64-ap --cmake -e -Werror -j8 "                                                                                                                                                                                                                    
+            echo "=== Backup CI results for $task ==="
+            ci_artifact_name="${{ matrix.group }}/${task//:/_}_${{ needs.setup.outputs.TRIGGER_REPO_NAME }}-${{ github.event.pull_request.number }}"
+            echo $ci_artifact_name
+            mkdir -p $ci_artifact_name || true
+            pwd
+            ls -atl .
+            if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
+              cp ${cp_base_dir}/nuttx ${cp_base_dir}/.config $ci_artifact_name
+            else
+              cp ${cp_base_dir}/nuttx ${cp_base_dir}/vela_*.bin ${cp_base_dir}/.config $ci_artifact_name
+            fi
+            
+            echo "=== Cleaning up after $task ==="
+            sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'  > /dev/null 2>&1 || true
+            sudo rm -rf cmake_out || true
 
-    - name: Upload goldfish-x86_64-ap Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: goldfish-x86_64-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: cmake_out/vela_goldfish-x86_64-ap/nuttx
+            #if [[ "$task" == *-citest ]]; then
+            #  echo "Run autotest tasks: $task"
+            #  STANDARD_CONFIG="${task%-citest*}"
+            #  test_model=${STANDARD_CONFIG//-/_}
+            #  echo "pytest -m \"common or $test_model\" ./ -B $STANDARD_CONFIG -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json --maxfail=10"
+            #  docker run --rm \
+            #    -v ${{ github.workspace }}:/workspace \
+            #    -w /workspace \
+            #    ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+            #    /bin/bash -c "free -m && df -h && cp $ci_artifact_name/* nuttx/ && ls -atl nuttx && cd tests/scripts/script && pytest -m \"common or $test_model\" ./ -B $STANDARD_CONFIG -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json --maxfail=10"
+            #    /bin/bash -c "ls -atl"
 
-    - name: Clean
-      run: |
-        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-      continue-on-error: true
+            #  echo "Check autotest result: $task"
+            #  cd ${{ github.workspace }}
+            #  mkdir output
+            #  cp ./*.log ./autotest.json $ci_artifact_name
+            #  failed=$(cat autotest.json | jq '.report.summary.failed')
+            #  if [ "$failed" != "null" ] && [ "$failed" != "0" ]; then
+            #    echo "autotest failed: $failed"
+            #    result="failed"
+            #    exit 1;
+            #  else
+            #    echo "autotest passed"
+            #    result="success"
+            #  fi
+            #fi
+          done
 
-    - name: Run CI tasks inside Docker container(goldfish-arm64-v8a-ap)
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ls -atl && ./build.sh vendor/openvela/boards/vela/configs/goldfish-arm64-v8a-ap --cmake -e -Werror -j8 "
+      - name: Archive CI Build Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Build_Package_${{ matrix.group }}
+          path: |
+            ${{ matrix.group }}
 
-    - name: Upload goldfish-arm64-v8a-ap Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: goldfish-arm64-v8a-ap_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-        path: cmake_out/vela_goldfish-arm64-v8a-ap/nuttx
+      - name: Check status
+        id: check
+        if: always()
+        run: |
+          echo "status=${{ job.status }}" >> $GITHUB_OUTPUT
 
-    - name: Clean
-      run: |
-        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-      continue-on-error: true
+  # 后置处理作业，用于更新依赖PR状态
+  post-processing:
+    needs: ci-tasks
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post Processing
+        env:
+          ci-tasks_status: ${{ needs.ci-tasks.outputs.status }}
+        run: |
+          echo "Job status: ${{ needs.ci-tasks.outputs.status }}"
 
-
-#    - name: Run CI tasks inside Docker container(stm32h750b-dk:lvgl)
-#      run: |
-#        docker run --rm \
-#          -v ${{ github.workspace }}:/workspace \
-#          -w /workspace \
-#          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-#          /bin/bash -c "df -h && ls -atl && ./build.sh stm32h750b-dk:lvgl -e -Werror -j8 "
-#
-#    - name: Upload stm32h750b-dk lvgl Artifact
-#      uses: actions/upload-artifact@v4
-#      with:
-#        name: stm32h750b-dk_lvgs_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-#        path: nuttx/nuttx
-#
-#    - name: Clean
-#      run: |
-#        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-#        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-#        chmod a+x ~/bin/repo
-#        df -h
-#        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-#      continue-on-error: true
-
-    - name: Run test build inside Docker container(goldfish-armeabi-v7a-ap-citest)
-      run: |
-        docker run --rm \
-          -v ${{ github.workspace }}:/workspace \
-          -w /workspace \
-          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-          /bin/bash -c "df -h && ./build.sh vendor/openvela/boards/vela/configs/goldfish-armeabi-v7a-ap-citest --cmake -e -Werror -j8"
-
-    - name: Clean
-      run: |
-        echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
-        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
-        chmod a+x ~/bin/repo
-        mkdir package_back
-        #cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config package_back
-        sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'
-        rm -rf .repo
-        rm -rf prebuilts/clang apps
-      continue-on-error: true
-#
-#    - name: Run autotest tasks inside Docker container
-#      run: |
-#        docker run --rm \
-#          -v ${{ github.workspace }}:/workspace \
-#          -w /workspace \
-#          ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
-#          /bin/bash -c "free -m && df -h && cp package_back/* nuttx/ && ls -atl nuttx && cd tests/scripts/script && pytest -m 'common or goldfish_armeabi_v7a_ap' ./ -B goldfish-armeabi-v7a-ap -L /workspace -P /workspace -F /tmp -R qemu -v --disable-warnings --count=1 --json=/workspace/autotest.json --maxfail=10"
-#
-#    - name: Check autotest result
-#      id: autotest_result
-#      run: |
-#        cd ${{ github.workspace }}
-#        mkdir output
-#        cp nuttx/nuttx ./*.log ./autotest.json output
-#        failed=$(cat autotest.json | jq '.report.summary.failed')
-#        if [ "$failed" != "null" ] && [ "$failed" != "0" ]; then
-#          echo "autotest failed: $failed"
-#          result="failed"
-#        else
-#          echo "autotest passed"
-#          result="success"
-#        fi
-#        echo "::set-output name=AUTOTEST_RESULT::${result}"
-#
-#    - name: Upload Artifact
-#      uses: actions/upload-artifact@v4
-#      with:
-#        name: goldfish-armeabi-v7a-ap-citest_${{ env.REPO_NAME }}-${{ github.event.pull_request.number }}
-#        path: output/
-#
-#    - name: Exit with autotest exit code
-#      run: |
-#        if [ ${{ steps.autotest_result.outputs.AUTOTEST_RESULT }} == "success" ]; then
-#          exit 0;
-#        else
-#          exit 1;
-#        fi
-
-    - name: Post Processing
-      if: always() # 确保无论之前的步骤成功或失败，都会执行
-      run: |
-        echo "Job status: ${{ job.status }}"
-
-        if [[ "${{ job.status }}" == "success" ]]; then
-          ci_status="success"
-        else
-          ci_status="failure"
-        fi
-        for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
-          REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
-          PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
-          LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
-          if [[ -z "$LATEST_SHA" ]]; then
-            echo "No commits found for PR #$PR_NUMBER or invalid API response."
-            exit 1
+          if [[ "${{ needs.ci-tasks.outputs.status }}" == "success" ]]; then
+            ci_status="success"
+          else
+            ci_status="failure"
           fi
-          set -x
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
-            -d '{
-              "state": '"\"$ci_status\""',
-              "description": "CI '"$ci_status"'",
-              "context": "CI triggered by other PR",
-              "target_url": "${{ env.CURRENT_ACTION_URL }}"
-            }'
-          COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
-            -d "{\"body\": \"$COMMENT_BODY\"}"
-          set +x
-        done
+          for DEPENDENCY in ${{ needs.ci-tasks.outputs.DEPENDS_ON }}; do
+            REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
+            PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
+            PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+            LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
+            if [[ -z "$LATEST_SHA" ]]; then
+              echo "No commits found for PR #$PR_NUMBER or invalid API response."
+              exit 1
+            fi
+            set -x
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
+              -d '{
+                "state": '"\"$ci_status\""',
+                "description": "CI '"$ci_status"'",
+                "context": "CI triggered by other PR",
+                "target_url": "${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}"
+              }'
+            COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}"
+            curl -X POST \
+              -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
+              -d "{\"body\": \"$COMMENT_BODY\"}"
+            set +x
+          done
