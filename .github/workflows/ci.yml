@@ -172,7 +172,7 @@ jobs:
         group: [ubuntu22-01, ubuntu22-02]  # 定义组
         include:
           - group: ubuntu22-01
-            tasks: [goldfish-arm64-v8a-ap@cmake, goldfish-armeabi-v7a-ap@cmake, goldfish-x86_64-ap@cmake, vendor/espressif/boards/esp32s3/esp32s3-box/configs/openvela, vendor/espressif/boards/esp32s3/esp32s3-eye/configs/openvela]  # 第一组任务
+            tasks: [goldfish-arm64-v8a-ap@cmake, goldfish-armeabi-v7a-ap@cmake, goldfish-x86_64-ap@cmake, qemu-arm64-v8a-ap@cmake, qemu-armeabi-v7a-ap@cmake, vendor/espressif/boards/esp32s3/esp32s3-box/configs/openvela, vendor/espressif/boards/esp32s3/esp32s3-eye/configs/openvela]  # 第一组任务
           - group: ubuntu22-02
             tasks: [goldfish-armeabi-v7a-ap-citest@cmake]  # 第二组任务
       fail-fast: false
