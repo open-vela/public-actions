@@ -146,7 +146,10 @@ jobs:
         echo "REPO_INIT=true" >> $GITHUB_ENV
 
     - name: Repo Sync
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
         df -h
         ~/bin/repo sync -c -d --no-tags -j12
         df -h
@@ -219,7 +222,10 @@ jobs:
           echo "REPO_INIT=true" >> $GITHUB_ENV
 
       - name: Repo Sync
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
           df -h
           ~/bin/repo sync -c -d --no-tags -j12
           df -h
@@ -227,7 +233,10 @@ jobs:
 
       - name: Fetch PR
         if: ${{ github.event_name == 'pull_request_target' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
           current_path=$(pwd)
           echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
           echo $(ls -atl)
