@@ -252,9 +252,7 @@ jobs:
           cp_log=$current_path/cp.log
           for DEPENDENCY in ${{ needs.setup.outputs.ALL_PR }}; do
             REPO_FULL_PATH=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
-            github_domain_result=$(echo $REPO_FULL_PATH | grep 'https://github.com/' 2>&1)
-            github_domain_result=$?
-            if [ $github_domain_code -eq 0 ]; then
+            if [ $(echo $REPO_FULL_PATH | grep 'https://github.com/') -eq 0 ]; then
               REPO_FULL_PATH=$(echo $REPO_FULL_PATH | awk -F'https://github.com/' '{print $2}')
             fi
             PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
