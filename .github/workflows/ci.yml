@@ -387,7 +387,6 @@ jobs:
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
           sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /etc/mysql /etc/php /opt/hostedtoolcache/CodeQL
           sudo docker builder prune -a
-          sudo docker system prune -af
           sudo -E apt-get -y purge azure-cli* docker* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
           sudo -E apt-get -qq update
           sudo -E apt-get -qq autoremove --purge
