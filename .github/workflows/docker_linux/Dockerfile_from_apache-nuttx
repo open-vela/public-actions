@@ -18,7 +18,8 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
     git-lfs \
     dosfstools \
     mtools \
-    libc++abi1
+    libc++abi1 \
+    srecord
 RUN git lfs install
 RUN git lfs --version
 RUN pip3 install matplotlib==3.6.2
