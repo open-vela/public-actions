@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci_trunk:
-    if: github.event.pull_request.base.ref == 'trunk'
+    if: github.event.pull_request.base.ref == 'trunk' || startsWith(github.event.pull_request.base.ref, 'rebase_dev_trunk')
     uses: open-vela/public-actions/.github/workflows/ci.yml@trunk
     secrets: inherit
 
