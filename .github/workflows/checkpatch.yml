@@ -52,20 +52,16 @@ jobs:
           if [ "$image_count" -gt 0 ]; then
             echo "Found $image_count image file(s) in PR, starting watermark detection..."
             
-            # Install watermark detection dependencies
-            python -m venv .watermark_venv
-            source .watermark_venv/bin/activate
-            pip install opencv-python numpy paddlepaddle paddleocr
-            
             # Create temporary file to store image list
             git diff -z --name-only --diff-filter=ACM $commits | tr '\0' '\n' | grep -iE '\.(png|jpg|jpeg|bmp|gif)$' > /tmp/image_list.txt
             
-            # Detect watermark in each image
+            # Detect watermark in each image using Docker
             has_error=0
             while IFS= read -r img; do
               if [ -n "$img" ] && [ -f "$img" ]; then
                 echo "Checking image: $img"
-                if ! python ../detect_watermark.py "$img"; then
+                # Run watermark detection in Docker container
+                if ! docker run --rm -v "$(pwd):/workspace" ghcr.io/${{ github.repository_owner }}/watermark-detector:dev "$img"; then
                   has_error=1
                 fi
               elif [ -n "$img" ]; then
@@ -73,7 +69,6 @@ jobs:
               fi
             done < /tmp/image_list.txt
             
-            deactivate
             rm -f /tmp/image_list.txt
             
             if [ $has_error -eq 1 ]; then
@@ -85,6 +80,35 @@ jobs:
           else
             echo "No image file changes detected, skipping watermark check"
           fi
+
+    - name: Check Chinese in Commit Messages
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          
+          echo "Checking commit messages for Chinese characters..."
+          # Run Chinese detection in commit messages using Docker
+          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/${{ github.repository_owner }}/watermark-detector:dev python3 /usr/local/bin/check_commit_msg.py "$commits"; then
+            echo "❌ Chinese character check failed in commit messages"
+            exit 1
+          fi
+          
+          echo "✅ Commit message check passed"
+
+    - name: Check Chinese in Source Files
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          
+          echo "Checking source files for Chinese characters..."
+          # Run Chinese detection in source files using Docker
+          # Exclude README.md, .md files, and docs/ directory by default
+          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/${{ github.repository_owner }}/watermark-detector:dev python3 /usr/local/bin/check_source_files.py "$commits" --exclude README.md .md docs/; then
+            echo "❌ Chinese character check failed in source files"
+            exit 1
+          fi
+          
+          echo "✅ Source file check passed"
 
     - name: Check PR
       run: |

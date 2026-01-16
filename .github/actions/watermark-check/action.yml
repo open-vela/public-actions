@@ -1,0 +1,18 @@
+name: 'Watermark Detection'
+description: 'Detect sensitive watermarks in images using geometric angle filtering'
+author: 'OpenVela Team'
+
+inputs:
+  image-path:
+    description: 'Path to image file or directory to check'
+    required: true
+  
+runs:
+  using: 'docker'
+  image: 'docker://ghcr.io/${{ github.repository_owner }}/watermark-detector:latest'
+  args:
+    - ${{ inputs.image-path }}
+
+branding:
+  icon: 'shield'
+  color: 'blue'
