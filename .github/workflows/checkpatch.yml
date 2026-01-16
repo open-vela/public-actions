@@ -41,6 +41,51 @@ jobs:
           path: nuttx
           fetch-depth: 0
 
+    - name: Check Watermark in Images
+      run: |
+          cd ${{ env.REPO_NAME }}
+          commits="${{ github.event.pull_request.base.sha }}..HEAD"
+          
+          # Get modified image files in PR (case-insensitive)
+          image_count=$(git diff -z --name-only --diff-filter=ACM $commits | tr '\0' '\n' | grep -icE '\.(png|jpg|jpeg|bmp|gif)$' || echo 0)
+          
+          if [ "$image_count" -gt 0 ]; then
+            echo "Found $image_count image file(s) in PR, starting watermark detection..."
+            
+            # Install watermark detection dependencies
+            python -m venv .watermark_venv
+            source .watermark_venv/bin/activate
+            pip install opencv-python numpy paddlepaddle paddleocr
+            
+            # Create temporary file to store image list
+            git diff -z --name-only --diff-filter=ACM $commits | tr '\0' '\n' | grep -iE '\.(png|jpg|jpeg|bmp|gif)$' > /tmp/image_list.txt
+            
+            # Detect watermark in each image
+            has_error=0
+            while IFS= read -r img; do
+              if [ -n "$img" ] && [ -f "$img" ]; then
+                echo "Checking image: $img"
+                if ! python ../detect_watermark.py "$img"; then
+                  has_error=1
+                fi
+              elif [ -n "$img" ]; then
+                echo "Warning: File not found: $img"
+              fi
+            done < /tmp/image_list.txt
+            
+            deactivate
+            rm -f /tmp/image_list.txt
+            
+            if [ $has_error -eq 1 ]; then
+              echo "❌ Watermark detection failed: Sensitive watermark detected"
+              exit 1
+            fi
+            
+            echo "✅ Watermark detection passed"
+          else
+            echo "No image file changes detected, skipping watermark check"
+          fi
+
     - name: Check PR
       run: |
           cd ${{ env.REPO_NAME }}
