@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-水印检测脚本 - 基于几何角度过滤法
-用于检测图片中的敏感水印（如飞书/钉钉水印）
+Watermark Detection Script - Geometric Angle Filtering Method
+Detects sensitive watermarks (e.g., Feishu/DingTalk) in images
 """
 import sys
 import os
@@ -11,29 +11,29 @@ import math
 import re
 from paddleocr import PaddleOCR
 
-# ================= 配置 =================
-# 角度阈值：如果文字倾斜超过这个度数，就被认为是水印
-# 飞书/钉钉水印通常倾斜 30-45 度，设为 10 度非常安全
+# ================= Configuration =================
+# Angle threshold: text tilted beyond this degree is considered watermark
+# Feishu/DingTalk watermarks are typically tilted 30-45 degrees, 10 degrees is very safe
 MIN_ANGLE_THRESHOLD = 10.0
 # =======================================
 
 def calculate_text_angle(box):
     """
-    计算文本框的倾斜角度（相对于水平线）
-    box 格式: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
-    取上方两点 (p0, p1) 计算斜率
+    Calculate the tilt angle of text box (relative to horizontal line)
+    box format: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+    Take the top two points (p0, p1) to calculate slope
     """
     p0, p1 = box[0], box[1]
     dx = p1[0] - p0[0]
     dy = p1[1] - p0[1]
-    # 使用 atan2 计算弧度，然后转角度
+    # Use atan2 to calculate radians, then convert to degrees
     angle_rad = math.atan2(dy, dx)
     angle_deg = math.degrees(angle_rad)
     return abs(angle_deg)
 
 def preprocess_image(image_path):
     """
-    预处理：只做最基础的【字体加粗】，不再去线，避免误伤
+    Preprocessing: Only basic [font thickening], no line removal to avoid false positives
     """
     if not os.path.exists(image_path):
         return None
@@ -41,57 +41,57 @@ def preprocess_image(image_path):
     if img is None:
         return None
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # 1. 强对比度 (CLAHE)
+    # 1. Strong contrast (CLAHE)
     clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
-    # 2. 自适应二值化
+    # 2. Adaptive binarization
     binary = cv2.adaptiveThreshold(
         enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY, 35, 10
     )
-    # 3. 字体加粗（修复虚线断裂）
+    # 3. Font thickening (fix dashed line breaks)
     kernel = np.ones((2, 2), np.uint8)
     thickened = cv2.erode(binary, kernel, iterations=1)
     return thickened
 
 def detect_watermark_in_image(image_path, ocr):
     """
-    检测单个图片中的水印
-    返回: (has_watermark, watermark_info)
+    Detect watermark in a single image
+    Returns: (has_watermark, watermark_info)
     """
-    print(f"[*] 检测图片：{image_path}")
+    print(f"[*] Checking image: {image_path}")
     
     processed_img = preprocess_image(image_path)
     if processed_img is None:
-        print(f"[Warning] 无法读取或处理图片: {image_path}")
+        print(f"[Warning] Unable to read or process image: {image_path}")
         return False, None
     
-    print(f"[*] 正在识别文字...")
+    print(f"[*] Recognizing text...")
     result = ocr.ocr(processed_img, cls=True)
     
     watermark_candidates = []
     if result and result[0]:
         for line in result[0]:
-            box = line[0]        # 坐标
-            text = line[1][0]    # 文本
-            # 1. 计算角度
+            box = line[0]        # Coordinates
+            text = line[1][0]    # Text
+            # 1. Calculate angle
             angle = calculate_text_angle(box)
-            # 2. 核心判断逻辑
+            # 2. Core judgment logic
             if angle > MIN_ANGLE_THRESHOLD:
-                # === 是水印 (倾斜) ===
-                print(f"  [发现疑似水印] 角度: {angle:.1f}° | 内容: {text}")
+                # === Is watermark (tilted) ===
+                print(f"  [Suspicious watermark] Angle: {angle:.1f}° | Content: {text}")
                 watermark_candidates.append(text)
     
     if not watermark_candidates:
-        print(f"✅ {image_path}: 未发现倾斜文字，图片安全。")
+        print(f"✅ {image_path}: No tilted text found, image is safe.")
         return False, None
     
-    # 把所有碎片拼成一个长字符串，方便正则查找
+    # Concatenate all fragments into a long string for regex search
     full_text = " ".join(watermark_candidates)
     
-    # === 核心逻辑：正则严格匹配 ===
-    # 针对 "Jianjun Li 6719" 或 "Wang Zhang 1234"
-    # 逻辑：[英文单词] + [可能的空格和更多单词] + [空格] + [4位数字]
+    # === Core logic: Strict regex matching ===
+    # For "Jianjun Li 6719" or "Wang Zhang 1234"
+    # Logic: [English words] + [possible spaces and more words] + [space] + [4 digits]
     pattern = re.compile(r'([a-zA-Z]+(?:\s+[a-zA-Z]+)*)\s+(\d{4})\b')
     matches = pattern.findall(full_text)
     
@@ -101,15 +101,15 @@ def detect_watermark_in_image(image_path, ocr):
         for m in matches:
             name = m[0].strip()
             num = m[1]
-            # 再次过滤掉太短的误判
+            # Filter out false positives that are too short
             if len(name) > 3:
-                info = f"姓名: {name} | 尾号: {num}"
+                info = f"Name: {name} | Number: {num}"
                 print(f"   {info}")
                 watermark_info.append(info)
         return True, watermark_info
     else:
-        print(f"⚠️ {image_path}: 发现倾斜文字，但未匹配到 [姓名+4位手机号] 格式")
-        print(f"   原始识别内容: {full_text}")
+        print(f"⚠️ {image_path}: Found tilted text, but no [Name+4-digit number] pattern matched")
+        print(f"   Original recognized content: {full_text}")
         return False, None
 
 def main():
@@ -119,11 +119,11 @@ def main():
     
     target = sys.argv[1]
     
-    print(f"[*] 启动水印检测分析")
-    print(f"[*] 过滤逻辑：只保留倾斜角度 > {MIN_ANGLE_THRESHOLD}° 的文字")
+    print(f"[*] Starting watermark detection analysis")
+    print(f"[*] Filtering logic: Only keep tilted text > {MIN_ANGLE_THRESHOLD}°")
     print(f"="*60)
     
-    # 初始化 OCR (关闭日志)
+    # Initialize OCR (disable logs)
     ocr = PaddleOCR(
         use_angle_cls=True,
         lang="en",
@@ -132,7 +132,7 @@ def main():
         show_log=False
     )
     
-    # 收集要检测的图片
+    # Collect images to detect
     image_files = []
     if os.path.isfile(target):
         image_files.append(target)
@@ -142,17 +142,17 @@ def main():
                 if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
                     image_files.append(os.path.join(root, file))
     else:
-        print(f"[Error] 路径不存在: {target}")
+        print(f"[Error] Path does not exist: {target}")
         sys.exit(1)
     
     if not image_files:
-        print("[*] 未找到任何图片文件")
+        print("[*] No image files found")
         sys.exit(0)
     
-    print(f"[*] 找到 {len(image_files)} 个图片文件")
+    print(f"[*] Found {len(image_files)} image file(s)")
     print(f"="*60)
     
-    # 检测所有图片
+    # Detect all images
     detected_watermarks = []
     for img_path in image_files:
         has_watermark, info = detect_watermark_in_image(img_path, ocr)
@@ -160,18 +160,18 @@ def main():
             detected_watermarks.append((img_path, info))
         print()
     
-    # 最终结果
+    # Final result
     print(f"="*60)
-    print("【检测结果汇总】")
+    print("【Detection Result Summary】")
     if detected_watermarks:
-        print(f"🚨 发现 {len(detected_watermarks)} 个文件包含敏感水印 🚨")
+        print(f"🚨 Found {len(detected_watermarks)} file(s) containing sensitive watermarks 🚨")
         for img_path, info in detected_watermarks:
-            print(f"\n文件: {img_path}")
+            print(f"\nFile: {img_path}")
             for line in info:
                 print(f"  - {line}")
-        sys.exit(1)  # 发现泄露，返回错误码 1 (阻断 CI)
+        sys.exit(1)  # Found leak, return error code 1 (block CI)
     else:
-        print("✅ 所有图片均未发现敏感水印")
+        print("✅ All images passed, no sensitive watermarks found")
         sys.exit(0)
 
 if __name__ == "__main__":

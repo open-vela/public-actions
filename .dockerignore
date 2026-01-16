@@ -1,0 +1,40 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+!README-WATERMARK.md
+
+# Test files
+test-watermark.sh
+WATERMARK-INTEGRATION.md
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.venv
+.watermark_venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# CI/CD workflows (except the one we need)
+.github/workflows/*.yml
+!.github/workflows/build-watermark-docker.yml
+
+# Other actions
+.github/actions/
+!.github/actions/watermark-check/
