@@ -1,0 +1,264 @@
+name: cla-check
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created]
+  workflow_call:
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+  checks: write
+
+concurrency:
+  group: cla-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cla-check:
+    if: github.event_name == 'pull_request' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get PR Info
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let pr;
+            if (context.eventName === 'pull_request') {
+              pr = context.payload.pull_request;
+            } else {
+              const { data } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number
+              });
+              pr = data;
+            }
+            
+            core.setOutput('author', pr.user.login);
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('commits_url', pr.commits_url);
+
+      - name: Check CLA for All Commits
+        id: cla
+        timeout-minutes: 5
+        run: |
+          COMMITS_URL="${{ steps.pr-info.outputs.commits_url }}"
+          
+          ALL_EMAILS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "$COMMITS_URL" | jq -r '.[].commit.author.email' | sort | uniq)
+          
+          VALID_EMAILS=$(echo "$ALL_EMAILS" | grep -v "noreply.github.com" | grep -v "^$" | grep -v "null")
+          
+          if [ -z "$VALID_EMAILS" ]; then
+            echo "error=no_email" >> $GITHUB_OUTPUT
+            echo "signed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "📧 Checking CLA for contributors:"
+          echo "$VALID_EMAILS" | sed 's/^/  - /'
+          
+          UNSIGNED_EMAILS=""
+          SIGNED_EMAILS=""
+          ALL_SIGNED=true
+          CHECKED_EMAILS=""
+          
+          while IFS= read -r EMAIL; do
+            if [ ! -z "$EMAIL" ]; then
+              echo "   🔍 Checking $EMAIL..."
+              
+              # 添加超时和重试机制
+              RESPONSE=""
+              RETRY_COUNT=0
+              MAX_RETRIES=3
+              
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ -z "$RESPONSE" ]; do
+                if [ $RETRY_COUNT -gt 0 ]; then
+                  echo "   ⏳ Retry $RETRY_COUNT for $EMAIL..."
+                  sleep 2
+                fi
+                
+                # 使用超时设置的 curl 命令
+                RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 \
+                  "https://vela-website.hybrid.xiaomi.com/openvela_cla/check?email=$EMAIL" 2>/dev/null || echo "")
+                
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+              done
+              
+              if [ -z "$RESPONSE" ]; then
+                echo "   ⚠️ $EMAIL - API timeout, assuming NOT signed"
+                RESPONSE="TIMEOUT"
+              fi
+              
+              if [ "$RESPONSE" != "EMAIL_SIGNED" ]; then
+                if [ -z "$UNSIGNED_EMAILS" ]; then
+                  UNSIGNED_EMAILS="$EMAIL"
+                else
+                  UNSIGNED_EMAILS="$UNSIGNED_EMAILS,$EMAIL"
+                fi
+                ALL_SIGNED=false
+                if [ "$RESPONSE" = "TIMEOUT" ]; then
+                  echo "   ⚠️ $EMAIL - CLA check timeout (assumed NOT signed)"
+                else
+                  echo "   ❌ $EMAIL - CLA NOT signed (response: $RESPONSE)"
+                fi
+              else
+                if [ -z "$SIGNED_EMAILS" ]; then
+                  SIGNED_EMAILS="$EMAIL"
+                else
+                  SIGNED_EMAILS="$SIGNED_EMAILS,$EMAIL"
+                fi
+                echo "   ✅ $EMAIL - CLA signed"
+              fi
+              
+              if [ -z "$CHECKED_EMAILS" ]; then
+                CHECKED_EMAILS="$EMAIL"
+              else
+                CHECKED_EMAILS="$CHECKED_EMAILS,$EMAIL"
+              fi
+            fi
+          done <<< "$VALID_EMAILS"
+          
+          echo "emails=$CHECKED_EMAILS" >> $GITHUB_OUTPUT
+          echo "signed_emails=$SIGNED_EMAILS" >> $GITHUB_OUTPUT
+          echo "unsigned=$UNSIGNED_EMAILS" >> $GITHUB_OUTPUT
+          echo "error=" >> $GITHUB_OUTPUT
+          
+          if [ "$ALL_SIGNED" = true ]; then
+            echo "signed=true" >> $GITHUB_OUTPUT
+            echo "🎉 All contributors have signed the CLA!"
+          else
+            echo "signed=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Some contributors need to sign the CLA"
+          fi
+
+      - name: Set CLA Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const signed = '${{ steps.cla.outputs.signed }}' === 'true';
+            const emails = '${{ steps.cla.outputs.emails }}';
+            const unsigned = '${{ steps.cla.outputs.unsigned }}';
+            const error = '${{ steps.cla.outputs.error }}';
+            
+            let state, description;
+            if (error === 'no_email') {
+              state = 'error';
+              description = 'Cannot determine emails from commits';
+            } else if (signed) {
+              const emailCount = emails.split(',').length;
+              state = 'success';
+              description = `✅ CLA signed for all ${emailCount} contributor(s)`;
+            } else {
+              const unsignedCount = unsigned ? unsigned.split(',').filter(e => e.trim()).length : 0;
+              const totalCount = emails.split(',').length;
+              state = 'failure';
+              description = `❌ CLA required for ${unsignedCount}/${totalCount} contributor(s)`;
+            }
+            
+            // 只创建 cla/signature 状态检查
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ steps.pr-info.outputs.head_sha }}',
+              state: state,
+              description: description,
+              context: 'cla/signature',
+              target_url: `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            });
+            
+            console.log(`✅ Set CLA status: ${state} - ${description}`);
+            
+            // 如果需要签署 CLA 且不是评论触发，添加评论
+            if (!signed && !error && context.eventName === 'pull_request') {
+              const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
+              const unsignedList = unsigned ? unsigned.split(',').map(e => e.trim()).filter(e => e) : [];
+              
+              const body = `## ❌ CLA Signature Required
+              
+              @${{ steps.pr-info.outputs.author }} Some contributors need to sign the CLA:
+              
+              ${unsignedList.map(email => `- \`${email}\` ❌ **Needs to sign CLA**`).join('\n')}
+              
+              **Please:**
+              1. Sign the CLA at: https://www.openvela.com/#/community/cla
+              2. After signing, comment \`/check-cla\` to recheck
+              
+              **📋 View detailed check results:** [Action Run #${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              
+              ---
+              💡 **Tip**: All contributors must sign the CLA before the PR can be merged.`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+            
+            // 如果是评论触发且成功，添加成功评论
+            if (signed && context.eventName === 'issue_comment') {
+              const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
+              
+              const body = `## ✅ CLA Verification Complete
+              
+              @${{ steps.pr-info.outputs.author }} All contributors have signed the CLA!
+              
+              ${emailList.map(email => `- \`${email}\` ✅`).join('\n')}
+              
+              **📋 View detailed check results:** [Action Run #${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              
+              Your pull request can now proceed with the review process! 🎉`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+            
+            // 如果是评论触发但 CLA 仍未签署，添加提醒评论
+            if (!signed && !error && context.eventName === 'issue_comment') {
+              const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
+              const unsignedList = unsigned ? unsigned.split(',').map(e => e.trim()).filter(e => e) : [];
+              
+              const body = `## ❌ CLA Signature Still Required
+              
+              @${{ steps.pr-info.outputs.author }} Some contributors still need to sign the CLA:
+              
+              ${unsignedList.map(email => `- \`${email}\` ❌ **Needs to sign CLA**`).join('\n')}
+              
+              **Please:**
+              1. Sign the CLA at: https://www.openvela.com/#/community/cla
+              2. After signing, comment \`/check-cla\` to recheck
+              
+              **📋 View detailed check results:** [Action Run #${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              
+              ---
+              💡 **Tip**: All contributors must sign the CLA before the PR can be merged.`;
+              
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Fail if CLA not signed
+        if: steps.cla.outputs.signed == 'false' && steps.cla.outputs.error == ''
+        run: |
+          echo "❌ CLA signature required"
+          echo "Unsigned contributors: ${{ steps.cla.outputs.unsigned }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "This workflow fails to prevent PR merge until CLA is signed"
+          else
+            echo "This workflow fails to show that CLA check did not pass"
+          fi
