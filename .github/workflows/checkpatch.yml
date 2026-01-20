@@ -88,7 +88,7 @@ jobs:
           
           echo "Checking commit messages for Chinese characters..."
           # Run Chinese detection in commit messages using Docker
-          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/${{ github.repository_owner }}/watermark-detector:dev python3 /usr/local/bin/check_commit_msg.py "$commits"; then
+          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/${{ github.repository_owner }}/chinese-detector:dev bash -c "git config --global --add safe.directory /workspace && python /usr/local/bin/check_commit_msg.py '$commits'"; then
             echo "❌ Chinese character check failed in commit messages"
             exit 1
           fi
@@ -103,7 +103,7 @@ jobs:
           echo "Checking source files for Chinese characters..."
           # Run Chinese detection in source files using Docker
           # Exclude README.md, .md files, and docs/ directory by default
-          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/${{ github.repository_owner }}/watermark-detector:dev python3 /usr/local/bin/check_source_files.py "$commits" --exclude README.md .md docs/; then
+          if ! docker run --rm -v "$(pwd):/workspace" -w /workspace ghcr.io/${{ github.repository_owner }}/chinese-detector:dev bash -c "git config --global --add safe.directory /workspace && python /usr/local/bin/check_source_files.py '$commits' --exclude README.md .md docs/"; then
             echo "❌ Chinese character check failed in source files"
             exit 1
           fi

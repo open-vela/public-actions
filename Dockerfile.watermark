@@ -54,20 +54,11 @@ RUN mkdir -p /root/.paddleocr/whl/det/en/en_PP-OCRv3_det_infer && \
 COPY detect_watermark.py /usr/local/bin/detect_watermark.py
 RUN chmod +x /usr/local/bin/detect_watermark.py
 
-# Copy Chinese character detection scripts
-COPY check_commit_msg.py /usr/local/bin/check_commit_msg.py
-COPY check_source_files.py /usr/local/bin/check_source_files.py
-RUN chmod +x /usr/local/bin/check_commit_msg.py && \
-    chmod +x /usr/local/bin/check_source_files.py
-
-# Install git for Chinese detection scripts
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Create python symlink for compatibility
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Set working directory
 WORKDIR /workspace
 
 # Set entrypoint
-ENTRYPOINT ["python3", "/usr/local/bin/detect_watermark.py"]
+ENTRYPOINT ["python", "/usr/local/bin/detect_watermark.py"]

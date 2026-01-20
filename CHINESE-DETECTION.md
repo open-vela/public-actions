@@ -68,16 +68,20 @@
 
 ### Docker 镜像
 
-中文检测使用与水印检测相同的 Docker 镜像：
+中文检测使用专用的轻量级 Docker 镜像：
 ```
-ghcr.io/<organization>/watermark-detector:dev
+ghcr.io/<organization>/chinese-detector:dev
 ```
 
 该镜像包含：
 - Python 3.10
 - Git
-- 水印检测脚本（detect_watermark.py）
 - 中文检测脚本（check_commit_msg.py, check_source_files.py）
+
+**注意：** 中文检测镜像与水印检测镜像是分离的，这样可以：
+- 减小镜像体积（不包含 OpenCV、PaddleOCR 等大型依赖）
+- 加快构建和拉取速度
+- 独立维护和更新
 
 ## 本地测试
 
@@ -86,14 +90,16 @@ ghcr.io/<organization>/watermark-detector:dev
 ```bash
 # 测试 commit message
 docker run --rm -v "$(pwd):/workspace" -w /workspace \
-  ghcr.io/<organization>/watermark-detector:dev \
-  python /usr/local/bin/check_commit_msg.py "main..HEAD"
+  ghcr.io/<organization>/chinese-detector:dev \
+  bash -c "git config --global --add safe.directory /workspace && python /usr/local/bin/check_commit_msg.py 'main..HEAD'"
 
 # 测试源文件
 docker run --rm -v "$(pwd):/workspace" -w /workspace \
-  ghcr.io/<organization>/watermark-detector:dev \
-  python /usr/local/bin/check_source_files.py "main..HEAD" --exclude README.md .md docs/
+  ghcr.io/<organization>/chinese-detector:dev \
+  bash -c "git config --global --add safe.directory /workspace && python /usr/local/bin/check_source_files.py 'main..HEAD' --exclude README.md .md docs/"
 ```
+
+**注意：** Docker 容器中需要先配置 `safe.directory` 以避免 Git 安全检查问题。
 
 ### 直接运行脚本
 
@@ -117,9 +123,10 @@ chmod +x check_commit_msg.py check_source_files.py
   run: |
       # 添加更多排除规则
       docker run --rm -v "$(pwd):/workspace" -w /workspace \
-        ghcr.io/${{ github.repository_owner }}/watermark-detector:dev \
-        python /usr/local/bin/check_source_files.py "$commits" \
-        --exclude README.md .md docs/ LICENSE CHANGELOG.md
+        ghcr.io/${{ github.repository_owner }}/chinese-detector:dev \
+        bash -c "git config --global --add safe.directory /workspace && \
+        python /usr/local/bin/check_source_files.py '$commits' \
+        --exclude README.md .md docs/ LICENSE CHANGELOG.md"
 ```
 
 ### 禁用某个检查
@@ -162,11 +169,16 @@ A: 检查失败时，脚本会输出包含中文字符的文件名和行号，�
 
 ### 更新 Docker 镜像
 
-当修改检测脚本后，需要重新构建 Docker 镜像：
+当修改检测脚本后，需要重新构建 Docker 镜像。镜像会在以下情况自动构建：
+- 修改 `Dockerfile.chinese-detection`
+- 修改 `check_commit_msg.py` 或 `check_source_files.py`
+- 推送到 `dev` 或 `trunk` 分支
+
+也可以手动构建：
 
 ```bash
-docker build -f Dockerfile.watermark -t ghcr.io/<organization>/watermark-detector:dev .
-docker push ghcr.io/<organization>/watermark-detector:dev
+docker build -f Dockerfile.chinese-detection -t ghcr.io/<organization>/chinese-detector:dev .
+docker push ghcr.io/<organization>/chinese-detector:dev
 ```
 
 ### 测试脚本
