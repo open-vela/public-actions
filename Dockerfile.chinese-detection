@@ -1,0 +1,29 @@
+FROM python:3.10-slim
+
+LABEL maintainer="OpenVela Team"
+LABEL description="Chinese character detection tool for CI/CD pipelines"
+
+# Set environment variables to avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+# Install git for Chinese detection scripts
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy Chinese character detection scripts
+COPY check_commit_msg.py /usr/local/bin/check_commit_msg.py
+COPY check_source_files.py /usr/local/bin/check_source_files.py
+RUN chmod +x /usr/local/bin/check_commit_msg.py && \
+    chmod +x /usr/local/bin/check_source_files.py
+
+# Create python symlink for compatibility
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Set working directory
+WORKDIR /workspace
+
+# Default command (can be overridden)
+CMD ["/bin/bash"]

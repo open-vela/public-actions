@@ -96,6 +96,8 @@ docker run --rm -v "$(pwd):/workspace" \
 python detect_watermark.py image.jpg
 ```
 
+**Docker Image:** `ghcr.io/YOUR_USERNAME/watermark-detector:latest`
+
 ## Chinese Character Detection
 
 Automatically detects Chinese characters in commit messages and source files to maintain code internationalization.
@@ -112,7 +114,7 @@ python check_source_files.py main..HEAD --exclude README.md .md docs/
 
 # Using Docker
 docker run --rm -v "$(pwd):/workspace" -w /workspace \
-  ghcr.io/YOUR_USERNAME/watermark-detector:dev \
+  ghcr.io/YOUR_USERNAME/chinese-detector:dev \
   python /usr/local/bin/check_commit_msg.py "main..HEAD"
 ```
 
@@ -121,6 +123,8 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace \
 - Scans modified source files for Chinese comments/strings
 - Configurable exclusion rules (README, docs, etc.)
 - Integrated into CI/CD pipeline
+
+**Docker Image:** `ghcr.io/YOUR_USERNAME/chinese-detector:dev`
 
 ## Files
 
@@ -131,7 +135,8 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace \
 - `.github/workflows/ci-real.yml` - Actual CI implementation
 - `.github/workflows/docs.yml` - Multi-repo PR dependency management
 - `.github/workflows/stale.yml` - Stale issue/PR management
-- `.github/workflows/build-watermark-docker.yml` - Docker image builder
+- `.github/workflows/build-watermark-docker.yml` - Watermark detection Docker image builder
+- `.github/workflows/build-chinese-detection-docker.yml` - Chinese detection Docker image builder
 - `.github/workflows/clang-format.yml` - Code formatting check
 - `.github/workflows/docker_linux.yml` - Linux Docker build
 - `.github/workflows/docker_linux_from_apache-nuttx.yml` - Apache NuttX Docker build
@@ -148,7 +153,8 @@ docker run --rm -v "$(pwd):/workspace" -w /workspace \
 - `test-chinese-detection.sh` - Test Chinese detection scripts
 
 ### Docker
-- `Dockerfile.watermark` - Watermark and Chinese detection image
+- `Dockerfile.watermark` - Watermark detection image
+- `Dockerfile.chinese-detection` - Chinese character detection image
 - `.dockerignore` - Build optimization
 
 ### Documentation
