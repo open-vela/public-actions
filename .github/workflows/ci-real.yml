@@ -176,10 +176,27 @@ jobs:
       matrix:
         group: [ubuntu22-01, ubuntu22-02]  # 定义组
         include:
-          - group: ubuntu22-01
-            tasks: [goldfish-arm64-v8a-ap, goldfish-armeabi-v7a-ap, goldfish-x86_64-ap, stm32h750b-dk:lvgl, vendor/espressif/boards/esp32s3/esp32s3-box/configs/openvela, vendor/espressif/boards/esp32s3/esp32s3-eye/configs/openvela]  # 第一组任务
-          - group: ubuntu22-02
-            tasks: [goldfish-armeabi-v7a-ap-citest]  # 第二组任务
+          - group: ubuntu22-01 # 第一组任务
+            tasks: 
+              - goldfish-arm64-v8a-ap@cmake
+              - goldfish-x86_64-ap@cmake
+          - group: ubuntu22-02 # 第二组任务
+            tasks:
+              - vendor/openvela/boards/sil/configs/ksil_arm32r_nsh_bl@cmake
+              - vendor/openvela/boards/sil/configs/ksil_arm32r_nsh_core0@cmake
+              - vendor/openvela/boards/sil/configs/sil_arm32r_nsh_bl@cmake
+              - vendor/openvela/boards/sil/configs/sil_arm32r_nsh_core0@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/bl@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/core0
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kbl
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kcore0
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/bl@cmake
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/core0@cmake
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/core1@cmake
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/core2@cmake
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/core3@cmake
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/core4@cmake
+              - vendor/infineon/boards/aurix/tc4d9_evb/configs/core5@cmake
       fail-fast: false
     outputs:
       status: ${{ steps.check.outputs.status }}
@@ -381,18 +398,43 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker Pull
-        run: docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
+        run: |
+          docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
+          df -h
+
+      - name: Clean up disk space
+        run: |
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /etc/mysql /etc/php /opt/hostedtoolcache/CodeQL
+          sudo docker builder prune -a
+          sudo -E apt-get -y purge azure-cli* docker* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          df -h
 
       - name: Run CI tasks inside Docker container
         run: |
           artifacts=[]
           for task in ${{ join(matrix.tasks, ' ') }}; do
             rm -rf output || true
+            cmake_flag=""
+            cp_base_dir="nuttx"
             echo "=== Starting task: $task ==="
+            if [[ "$task" == *@* ]]; then
+              cmake_flag="--cmake"
+              task=$(echo "$task" | awk -F '@' '{print $1}')
+              cp_base_dir="cmake_out/*"
+            fi
             if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
-              build_cmd="./build.sh $task -e -Werror -j8"
+              build_cmd="./build.sh $task $cmake_flag -e -Werror -j8"
             else
-              build_cmd="./build.sh vendor/openvela/boards/vela/configs/$task -e -Werror -j8"
+              build_cmd="./build.sh vendor/openvela/boards/vela/configs/$task $cmake_flag -e -Werror -j8"
             fi
             echo $build_cmd
 
@@ -409,13 +451,14 @@ jobs:
             pwd
             ls -atl .
             if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
-              cp nuttx/nuttx nuttx/.config $ci_artifact_name
+              cp ${cp_base_dir}/nuttx ${cp_base_dir}/.config $ci_artifact_name
             else
-              cp nuttx/nuttx nuttx/vela_*.bin nuttx/.config $ci_artifact_name
+              cp ${cp_base_dir}/nuttx ${cp_base_dir}/vela_*.bin ${cp_base_dir}/.config $ci_artifact_name
             fi
             
             echo "=== Cleaning up after $task ==="
             sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'  > /dev/null 2>&1 || true
+            sudo rm -rf cmake_out || true
 
             if [[ "$task" == *-citest ]]; then
               echo "Run autotest tasks: $task"
