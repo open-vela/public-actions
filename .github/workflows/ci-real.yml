@@ -187,6 +187,9 @@ jobs:
               - vendor/openvela/boards/sil/configs/sil_arm32r_nsh_bl@cmake
               - vendor/openvela/boards/sil/configs/sil_arm32r_nsh_core0@cmake
               - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/bl@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/core0@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kbl@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kcore0@cmake
       fail-fast: false
     outputs:
       status: ${{ steps.check.outputs.status }}
