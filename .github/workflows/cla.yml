@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   cla-check:
-    if: github.event_name == 'pull_request' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
+    if: github.event_name == 'pull_request_target' || github.event_name == 'pull_request' || github.event_name == 'workflow_call' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
     runs-on: ubuntu-latest
     steps:
       - name: Get PR Info
