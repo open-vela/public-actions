@@ -6,13 +6,23 @@ name: docs
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created]
 
   # reusable
   workflow_call:
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
+  cla:
+    # PR 时自动执行，或者评论 /check-cla 时执行
+    if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_call' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
+    uses: open-vela/public-actions/.github/workflows/cla.yml@dev
+    secrets: inherit
+
   docs:
+    # 只在 PR 时执行，评论不触发
+    if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
     - name: Get Repo Name
