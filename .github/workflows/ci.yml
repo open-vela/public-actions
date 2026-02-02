@@ -2,21 +2,25 @@ name: CI
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
-
-  # reusable
+  issue_comment:
+    types: [created]
   workflow_call:
 
 jobs:
   cla:
+    # PR 时自动执行，或者评论 /check-cla 时执行
+    if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_call' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
     uses: open-vela/public-actions/.github/workflows/cla.yml@dev
     secrets: inherit
 
   ci_trunk:
-    if: github.event.pull_request.base.ref == 'trunk' || startsWith(github.event.pull_request.base.ref, 'rebase_dev_trunk')
+    # 只在 PR 时执行，评论不触发 CI
+    if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_call') && (github.event.pull_request.base.ref == 'trunk' || startsWith(github.event.pull_request.base.ref, 'rebase_dev_trunk'))
     uses: open-vela/public-actions/.github/workflows/ci.yml@trunk
     secrets: inherit
 
   ci_dev:
-    if: github.event.pull_request.base.ref == 'dev'
+    # 只在 PR 时执行，评论不触发 CI
+    if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_call') && github.event.pull_request.base.ref == 'dev'
     uses: open-vela/public-actions/.github/workflows/ci-real.yml@dev
     secrets: inherit
