@@ -175,7 +175,7 @@ jobs:
             console.log(`✅ Set CLA status: ${state} - ${description}`);
             
             // 如果需要签署 CLA 且不是评论触发，添加评论
-            if (!signed && !error && context.eventName === 'pull_request') {
+            if (!signed && !error && (context.eventName === 'pull_request' || context.eventName === 'pull_request_target')) {
               const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
               const unsignedList = unsigned ? unsigned.split(',').map(e => e.trim()).filter(e => e) : [];
               
