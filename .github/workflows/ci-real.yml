@@ -178,6 +178,7 @@ jobs:
         include:
           - group: ubuntu22-01 # 第一组任务
             tasks: 
+              - goldfish-armeabi-v7a-ap@cmake
               - goldfish-arm64-v8a-ap@cmake
               - goldfish-x86_64-ap@cmake
           - group: ubuntu22-02 # 第二组任务
