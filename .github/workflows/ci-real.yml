@@ -198,6 +198,10 @@ jobs:
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core3@cmake
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core4@cmake
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core5@cmake
+              - vendor/bes/boards/best2003_ep/aos_evb/configs/ap
+              - vendor/bes/boards/best2003_ep/aos_evb/configs/audio
+              - vendor/bes/boards/best2003_ep/aos_evb/configs/bootloader
+              - vendor/bes/boards/best2003_ep/aos_evb/configs/ota
       fail-fast: false
     outputs:
       status: ${{ steps.check.outputs.status }}
