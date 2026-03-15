@@ -60,6 +60,14 @@ jobs:
       run: |
         echo "Current Action URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
+    - name: Generate App Token
+      id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        owner: open-vela
+
     - name: Parse PR Description for Dependencies
       id: parse-dependencies
       env:
@@ -67,7 +75,7 @@ jobs:
         PR_BODY: ${{ github.event.pull_request.body }}
         PR_REPO: ${{ github.repository }}
         PR_NUM: ${{ github.event.pull_request.number }}
-        CI_PAT: ${{ secrets.CI_PAT_ROBOT }}
+        CI_PAT: ${{ steps.app-token.outputs.token }}
       run: |
         set -x
         # 安全地将 PR body 写入文件（通过环境变量，不会被 shell 解析执行）
@@ -522,12 +530,20 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: open-vela
+
       - name: Post Processing
         env:
           CI_TASKS_STATUS: ${{ needs.ci-tasks.outputs.status }}
           DEPENDS_ON: ${{ needs.ci-tasks.outputs.DEPENDS_ON }}
           CURRENT_ACTION_URL: ${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}
-          CI_PAT: ${{ secrets.CI_PAT_ROBOT }}
+          CI_PAT: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Job status: $CI_TASKS_STATUS"
 
