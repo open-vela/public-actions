@@ -10,6 +10,13 @@ on:
   # reusable
   workflow_call:
 
+# 最小权限原则 - 顶层只声明只读，各 job 按需提升
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+  actions: read
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   setup:
@@ -29,15 +36,18 @@ jobs:
         GITHUB_REPOSITORY: ${{ github.repository }}
         GITHUB_RUN_ID: ${{ github.run_id }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
-          echo "TRIGGER_REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_ENV
-          echo "TRIGGER_REPO_NAME=$(basename ${{ github.repository }})" >> $GITHUB_OUTPUT
-          echo "TRIGGER_COMMIT_ID=${{ github.event.pull_request.head.sha }}" >> $GITHUB_ENV
-          echo "TRIGGER_COMMIT_ID=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-          echo "PR_INFO_FILE=pr_info_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-          echo "PR_INFO_FILE=pr_info_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          echo "SNAPSHOT=snapshot_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_ENV
-          echo "SNAPSHOT=snapshot_$(basename ${{ github.repository }})_${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          REPO_BASENAME=$(basename "$GITHUB_REPOSITORY")
+          echo "TRIGGER_REPO_NAME=$REPO_BASENAME" >> $GITHUB_ENV
+          echo "TRIGGER_REPO_NAME=$REPO_BASENAME" >> $GITHUB_OUTPUT
+          echo "TRIGGER_COMMIT_ID=$PR_HEAD_SHA" >> $GITHUB_ENV
+          echo "TRIGGER_COMMIT_ID=$PR_HEAD_SHA" >> $GITHUB_OUTPUT
+          echo "PR_INFO_FILE=pr_info_${REPO_BASENAME}_${PR_NUMBER}" >> $GITHUB_ENV
+          echo "PR_INFO_FILE=pr_info_${REPO_BASENAME}_${PR_NUMBER}" >> $GITHUB_OUTPUT
+          echo "SNAPSHOT=snapshot_${REPO_BASENAME}_${PR_NUMBER}" >> $GITHUB_ENV
+          echo "SNAPSHOT=snapshot_${REPO_BASENAME}_${PR_NUMBER}" >> $GITHUB_OUTPUT
           echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_ENV
           echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_OUTPUT
 
@@ -52,18 +62,35 @@ jobs:
 
     - name: Parse PR Description for Dependencies
       id: parse-dependencies
+      env:
+        # 通过 env 传递用户可控输入，避免 shell 注入
+        PR_BODY: ${{ github.event.pull_request.body }}
+        PR_REPO: ${{ github.repository }}
+        PR_NUM: ${{ github.event.pull_request.number }}
+        CI_PAT: ${{ secrets.CI_PAT_ROBOT }}
       run: |
         set -x
-        # 获取当前 PR 的描述
-        cat > pull_request.body.txt <<'EOF'
-        ${{ github.event.pull_request.body }}
-        EOF
-        DEPENDS_ON=$(grep -oP 'depends-on:\s*\[[^]]+\]' pull_request.body.txt | sed 's/^ *//;s/ *$//')
+        # 安全地将 PR body 写入文件（通过环境变量，不会被 shell 解析执行）
+        printf '%s\n' "$PR_BODY" > pull_request.body.txt
+
+        DEPENDS_ON=$(grep -oP 'depends-on:\s*\[[^]]+\]' pull_request.body.txt | sed 's/^ *//;s/ *$//') || true
         echo "PR DEPENDS_ON: $DEPENDS_ON"
         DEPENDS_ON=$(echo "$DEPENDS_ON" | grep -oP '(?<=\[)[^]]+(?=\])') || true
         DEPENDS_ON=$(echo $DEPENDS_ON | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         DEPENDS_ON=$(echo "$DEPENDS_ON" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
-        ALL_PR="$DEPENDS_ON ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+
+        # 白名单校验 - 只允许合法的 PR 引用格式 (owner/repo/pull/number)
+        VALIDATED_DEPS=""
+        for dep in $DEPENDS_ON; do
+          if echo "$dep" | grep -qP '^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/pull/[0-9]+$'; then
+            VALIDATED_DEPS="$VALIDATED_DEPS $dep"
+          else
+            echo "::warning::Ignoring invalid depends-on entry: $dep"
+          fi
+        done
+        DEPENDS_ON=$(echo "$VALIDATED_DEPS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+        ALL_PR="$DEPENDS_ON ${PR_REPO}/pull/${PR_NUM}"
         ALL_PR=$(echo $ALL_PR | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         ALL_PR=$(echo "$ALL_PR" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
         manifest_part=$(echo "$ALL_PR" | grep -o 'open-vela/manifests[^ ]*') || true
@@ -75,43 +102,43 @@ jobs:
         echo "ALL_PR=$ALL_PR" >> $GITHUB_OUTPUT
         echo "DEPENDS_ON=$DEPENDS_ON" >> $GITHUB_ENV
         echo "DEPENDS_ON=$DEPENDS_ON" >> $GITHUB_OUTPUT
-        echo "$TRIGGER_REPO_NAME:$TRIGGER_COMMIT_ID" >> ${{ env.PR_INFO_FILE }}
-    
+        echo "$TRIGGER_REPO_NAME:$TRIGGER_COMMIT_ID" >> "$PR_INFO_FILE"
+
         for DEPENDENCY in $DEPENDS_ON; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
           PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          PR_COMMITS=$(curl -s -H "Authorization: token ${CI_PAT}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
             exit 1
           fi
-          echo "$REPO_NAME:$LATEST_SHA" >> ${{ env.PR_INFO_FILE }}
+          echo "$REPO_NAME:$LATEST_SHA" >> "$PR_INFO_FILE"
           curl -X POST \
-            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+            -H "Authorization: token ${CI_PAT}" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
+            "https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA" \
             -d '{
               "state": "pending",
               "description": "In progress",
               "context": "CI triggered by other PR",
-              "target_url": "${{ env.CURRENT_ACTION_URL }}"
+              "target_url": "'"$CURRENT_ACTION_URL"'"
             }'
-          COMMENT_BODY="CI started by ${{ github.repository }}/pull/${{ github.event.pull_request.number }}.\n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
+          COMMENT_BODY="CI started by ${PR_REPO}/pull/${PR_NUM}.\n PR list is $ALL_PR.\n CI url: $CURRENT_ACTION_URL"
           curl -X POST \
-            -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+            -H "Authorization: token ${CI_PAT}" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
+            "https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
             -d "{\"body\": \"$COMMENT_BODY\"}"
         done
-  
+
     - name: Download and install repo
       run: |
         mkdir ~/bin
         echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
         chmod a+x ~/bin/repo
-    
+
     - name: Clean up disk space
       run: |
         sudo apt-get clean
@@ -139,10 +166,12 @@ jobs:
       run: |
         PR_BRANCH=$(jq -r '.pull_request.head.ref' "$GITHUB_EVENT_PATH")
         echo "branch_name=$PR_BRANCH" >> $GITHUB_OUTPUT
-  
+
     - name: Repo Init
+      env:
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
       run: |
-        ~/bin/repo init -u https://github.com/open-vela/manifests -b ${{ github.event.pull_request.base.ref }} -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
+        ~/bin/repo init -u https://github.com/open-vela/manifests -b "$PR_BASE_REF" -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
         echo "REPO_INIT=true" >> $GITHUB_ENV
 
     - name: Repo Sync
@@ -154,7 +183,7 @@ jobs:
         ~/bin/repo sync -c -d --no-tags -j12
         df -h
         pwd && ls -atl .
-        ~/bin/repo manifest -r -o ${{ env.SNAPSHOT }}
+        ~/bin/repo manifest -r -o "$SNAPSHOT"
 
     - name: Archive Snapshot and PR Info
       uses: actions/upload-artifact@v4
@@ -196,7 +225,7 @@ jobs:
           # this might remove tools that are actually needed,
           # if set to "true" but frees about 6 GB
           tool-cache: false
-          
+
           # all of these default to true, but feel free to set to
           # "false" if necessary for your workflow
           android: true
@@ -212,13 +241,16 @@ jobs:
           echo 'export PATH=~/bin:$PATH' >> $HOME/.bashrc
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
           chmod a+x ~/bin/repo
-    
+
       - name: Repo Init
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          SNAPSHOT_FILE: ${{ needs.setup.outputs.SNAPSHOT }}
         run: |
-          ~/bin/repo init -u https://github.com/open-vela/manifests -b ${{ github.event.pull_request.base.ref }} -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
-          cp ${{ needs.setup.outputs.SNAPSHOT }}  .repo/manifests/
-          echo "~/bin/repo init -m ${{ needs.setup.outputs.SNAPSHOT }} --group=default,platform-linux --depth=1 --git-lfs"
-          ~/bin/repo init -m ${{ needs.setup.outputs.SNAPSHOT }} --group=default,platform-linux --depth=1 --git-lfs
+          ~/bin/repo init -u https://github.com/open-vela/manifests -b "$PR_BASE_REF" -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
+          cp "$SNAPSHOT_FILE"  .repo/manifests/
+          echo "~/bin/repo init -m $SNAPSHOT_FILE --group=default,platform-linux --depth=1 --git-lfs"
+          ~/bin/repo init -m "$SNAPSHOT_FILE" --group=default,platform-linux --depth=1 --git-lfs
           echo "REPO_INIT=true" >> $GITHUB_ENV
 
       - name: Repo Sync
@@ -235,6 +267,9 @@ jobs:
         if: ${{ github.event_name == 'pull_request_target' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALL_PR: ${{ needs.setup.outputs.ALL_PR }}
+          PR_INFO_FILE: ${{ needs.setup.outputs.PR_INFO_FILE }}
+          SNAPSHOT_FILE: ${{ needs.setup.outputs.SNAPSHOT }}
         run: |
           git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
           current_path=$(pwd)
@@ -250,11 +285,11 @@ jobs:
           code_base_check=0
           fetch_log=$current_path/fetch.log
           cp_log=$current_path/cp.log
-          for DEPENDENCY in ${{ needs.setup.outputs.ALL_PR }}; do
+          for DEPENDENCY in $ALL_PR; do
             REPO_FULL_PATH=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
             PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
             PROJECT_NAME=$(echo $REPO_FULL_PATH | cut -d '/' -f 2)
-            PR_COMMIT=$(cat ${{ needs.setup.outputs.PR_INFO_FILE }} | grep "${PROJECT_NAME}:" | awk -F':' '{print $2}')
+            PR_COMMIT=$(cat "$PR_INFO_FILE" | grep "${PROJECT_NAME}:" | awk -F':' '{print $2}')
             if [ $PROJECT_NAME == "manifests" ]; then
               cd .repo/manifests
               echo "git fetch origin pull/$PR_NUMBER/head:pr-branch"
@@ -278,20 +313,20 @@ jobs:
                 cp_code=1
               fi
               echo $cp_pr_result
-              cd -                                                                                                                                                  
+              cd -
               ~/bin/repo sync -c -d --no-tags -j12
               if [ $? -ne 0 ]; then
                 repo_sync_code=1
               fi
             else
-              manifest_content=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }})
+              manifest_content=$(cat ".repo/manifests/$SNAPSHOT_FILE")
               #echo $manifest_content
-              REPO_NAME=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'name="' '{print $2}' | awk -F'"' '{print $1}')
+              REPO_NAME=$(cat ".repo/manifests/$SNAPSHOT_FILE" | grep "\"$PROJECT_NAME\"" | awk -F'name="' '{print $2}' | awk -F'"' '{print $1}')
               if [ "$REPO_NAME"X == ""X ]; then
                 repo_exist=1
                 break
               fi
-              REPO_PATH=$(cat .repo/manifests/${{ needs.setup.outputs.SNAPSHOT }} | grep "\"$PROJECT_NAME\"" | awk -F'path="' '{print $2}' | awk -F'"' '{print $1}')
+              REPO_PATH=$(cat ".repo/manifests/$SNAPSHOT_FILE" | grep "\"$PROJECT_NAME\"" | awk -F'path="' '{print $2}' | awk -F'"' '{print $1}')
               if [ "$REPO_PATH"X == ""X ]; then
                 REPO_PATH=$REPO_NAME
               fi
@@ -394,6 +429,11 @@ jobs:
           df -h
 
       - name: Run CI tasks inside Docker container
+        env:
+          CI_MATRIX_GROUP: ${{ matrix.group }}
+          CI_TRIGGER_REPO: ${{ needs.setup.outputs.TRIGGER_REPO_NAME }}
+          CI_PR_NUMBER: ${{ github.event.pull_request.number }}
+          CI_WORKSPACE: ${{ github.workspace }}
         run: |
           artifacts=[]
           for task in ${{ join(matrix.tasks, ' ') }}; do
@@ -414,13 +454,13 @@ jobs:
             echo $build_cmd
 
             docker run --rm \
-              -v ${{ github.workspace }}:/workspace \
+              -v "${CI_WORKSPACE}":/workspace \
               -w /workspace \
               ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
               /bin/bash -c "pwd && touch $task && df -h && ls -atl && $build_cmd && ls -atl nuttx"
 
             echo "=== Backup CI results for $task ==="
-            ci_artifact_name="${{ matrix.group }}/${task//:/_}_${{ needs.setup.outputs.TRIGGER_REPO_NAME }}-${{ github.event.pull_request.number }}"
+            ci_artifact_name="${CI_MATRIX_GROUP}/${task//:/_}_${CI_TRIGGER_REPO}-${CI_PR_NUMBER}"
             echo $ci_artifact_name
             mkdir -p $ci_artifact_name || true
             pwd
@@ -430,7 +470,7 @@ jobs:
             else
               cp ${cp_base_dir}/nuttx ${cp_base_dir}/vela_*.bin ${cp_base_dir}/.config $ci_artifact_name
             fi
-            
+
             echo "=== Cleaning up after $task ==="
             sudo ~/bin/repo forall -v -c 'git clean -dfx; git reset --hard HEAD'  > /dev/null 2>&1 || true
             sudo rm -rf cmake_out || true
@@ -484,19 +524,22 @@ jobs:
     steps:
       - name: Post Processing
         env:
-          ci-tasks_status: ${{ needs.ci-tasks.outputs.status }}
+          CI_TASKS_STATUS: ${{ needs.ci-tasks.outputs.status }}
+          DEPENDS_ON: ${{ needs.ci-tasks.outputs.DEPENDS_ON }}
+          CURRENT_ACTION_URL: ${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}
+          CI_PAT: ${{ secrets.CI_PAT_ROBOT }}
         run: |
-          echo "Job status: ${{ needs.ci-tasks.outputs.status }}"
+          echo "Job status: $CI_TASKS_STATUS"
 
-          if [[ "${{ needs.ci-tasks.outputs.status }}" == "success" ]]; then
+          if [[ "$CI_TASKS_STATUS" == "success" ]]; then
             ci_status="success"
           else
             ci_status="failure"
           fi
-          for DEPENDENCY in ${{ needs.ci-tasks.outputs.DEPENDS_ON }}; do
+          for DEPENDENCY in $DEPENDS_ON; do
             REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
             PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-            PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+            PR_COMMITS=$(curl -s -H "Authorization: token ${CI_PAT}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
             LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
             if [[ -z "$LATEST_SHA" ]]; then
               echo "No commits found for PR #$PR_NUMBER or invalid API response."
@@ -504,20 +547,20 @@ jobs:
             fi
             set -x
             curl -X POST \
-              -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+              -H "Authorization: token ${CI_PAT}" \
               -H "Accept: application/vnd.github.v3+json" \
-              https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
+              "https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA" \
               -d '{
                 "state": '"\"$ci_status\""',
                 "description": "CI '"$ci_status"'",
                 "context": "CI triggered by other PR",
-                "target_url": "${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}"
+                "target_url": "'"$CURRENT_ACTION_URL"'"
               }'
-            COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}"
+            COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: $CURRENT_ACTION_URL"
             curl -X POST \
-              -H "Authorization: token ${{ secrets.CI_PAT_ROBOT }}" \
+              -H "Authorization: token ${CI_PAT}" \
               -H "Accept: application/vnd.github.v3+json" \
-              https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
+              "https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
               -d "{\"body\": \"$COMMENT_BODY\"}"
             set +x
           done
