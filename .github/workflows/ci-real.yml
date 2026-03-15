@@ -59,13 +59,21 @@ jobs:
       run: |
         echo "Current Action URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
+    - name: Generate App Token
+      id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        owner: open-vela
+
     - name: Parse PR Description for Dependencies
       id: parse-dependencies
       env:
         PR_BODY: ${{ github.event.pull_request.body }}
         PR_REPO: ${{ github.repository }}
         PR_NUM: ${{ github.event.pull_request.number }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CI_PAT: ${{ steps.app-token.outputs.token }}
       run: |
         set -x
         printf '%s\n' "$PR_BODY" > pull_request.body.txt
@@ -103,7 +111,7 @@ jobs:
         for DEPENDENCY in $DEPENDS_ON; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
           PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          PR_COMMITS=$(curl -s -H "Authorization: token ${CI_PAT}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
@@ -111,7 +119,7 @@ jobs:
           fi
           echo "$REPO_NAME:$LATEST_SHA" >> "$PR_INFO_FILE"
           curl -X POST \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Authorization: token ${CI_PAT}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA" \
             -d '{
@@ -122,7 +130,7 @@ jobs:
             }'
           COMMENT_BODY="CI started by ${PR_REPO}/pull/${PR_NUM}.\n PR list is $ALL_PR.\n CI url: $CURRENT_ACTION_URL"
           curl -X POST \
-            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Authorization: token ${CI_PAT}" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments" \
             -d "{\"body\": \"$COMMENT_BODY\"}"
@@ -545,12 +553,20 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: open-vela
+
       - name: Post Processing
         env:
           CI_TASKS_STATUS: ${{ needs.ci-tasks.outputs.status }}
           DEPENDS_ON: ${{ needs.ci-tasks.outputs.DEPENDS_ON }}
           CURRENT_ACTION_URL: ${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_PAT: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Job status: ${CI_TASKS_STATUS}"
 
@@ -562,7 +578,7 @@ jobs:
           for DEPENDENCY in ${DEPENDS_ON}; do
             REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
             PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-            PR_COMMITS=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+            PR_COMMITS=$(curl -s -H "Authorization: token ${CI_PAT}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
             LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
             if [[ -z "$LATEST_SHA" ]]; then
               echo "No commits found for PR #$PR_NUMBER or invalid API response."
@@ -570,7 +586,7 @@ jobs:
             fi
             set -x
             curl -X POST \
-              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Authorization: token ${CI_PAT}" \
               -H "Accept: application/vnd.github.v3+json" \
               https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
               -d '{
@@ -581,7 +597,7 @@ jobs:
               }'
             COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${CURRENT_ACTION_URL}"
             curl -X POST \
-              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Authorization: token ${CI_PAT}" \
               -H "Accept: application/vnd.github.v3+json" \
               https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
               -d "{\"body\": \"$COMMENT_BODY\"}"
