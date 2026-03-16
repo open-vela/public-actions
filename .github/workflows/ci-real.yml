@@ -87,7 +87,12 @@ jobs:
         VALIDATED_DEPS=""
         for dep in $DEPENDS_ON; do
           if echo "$dep" | grep -qP '^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/pull/[0-9]+$'; then
-            VALIDATED_DEPS="$VALIDATED_DEPS $dep"
+            if [[ "$dep" =~ ^open-vela/ ]]; then
+              VALIDATED_DEPS="$VALIDATED_DEPS $dep"
+            else
+              echo "::error::Cross-organization dependencies are forbidden: $dep"
+              exit 1
+            fi
           else
             echo "::warning::Ignoring invalid depends-on entry: $dep"
           fi
