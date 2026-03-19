@@ -45,12 +45,22 @@ jobs:
 
       - name: Check CLA for All Commits
         id: cla
+        continue-on-error: true
         timeout-minutes: 5
         run: |
+          set +e
           COMMITS_URL="${{ steps.pr-info.outputs.commits_url }}"
           
           ALL_EMAILS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "$COMMITS_URL" | jq -r '.[].commit.author.email' | sort | uniq)
+          CURL_EXIT=$?
+          
+          if [ $CURL_EXIT -ne 0 ] || [ -z "$ALL_EMAILS" ]; then
+            echo "⚠️ Failed to fetch commit emails (exit code: $CURL_EXIT)"
+            echo "error=api_error" >> $GITHUB_OUTPUT
+            echo "signed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           VALID_EMAILS=$(echo "$ALL_EMAILS" | grep -v "noreply.github.com" | grep -v "^$" | grep -v "null")
           
@@ -150,6 +160,9 @@ jobs:
             if (error === 'no_email') {
               state = 'error';
               description = 'Cannot determine emails from commits';
+            } else if (error === 'api_error') {
+              state = 'error';
+              description = 'CLA check failed: unable to fetch commit data or reach CLA API';
             } else if (signed) {
               const emailCount = emails.split(',').length;
               state = 'success';
@@ -257,8 +270,4 @@ jobs:
         run: |
           echo "❌ CLA signature required"
           echo "Unsigned contributors: ${{ steps.cla.outputs.unsigned }}"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "This workflow fails to prevent PR merge until CLA is signed"
-          else
-            echo "This workflow fails to show that CLA check did not pass"
-          fi
+          exit 1
