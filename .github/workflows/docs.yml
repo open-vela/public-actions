@@ -24,6 +24,10 @@ jobs:
   cla:
     # PR 时自动执行，或者评论 /check-cla 时执行
     if: github.event_name == 'pull_request_target' || github.event_name == 'workflow_call' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
+    permissions:
+      checks: write
+      pull-requests: write
+      contents: read
     uses: open-vela/public-actions/.github/workflows/cla.yml@dev
     secrets: inherit
 
