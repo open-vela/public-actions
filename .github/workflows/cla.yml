@@ -28,9 +28,20 @@ jobs:
         with:
           script: |
             let pr;
-            if (context.eventName === 'pull_request') {
+            if (context.eventName === 'pull_request' || context.eventName === 'pull_request_target') {
               pr = context.payload.pull_request;
+            } else if (context.eventName === 'workflow_call') {
+              // When called as reusable workflow, PR info is in the caller's context
+              pr = context.payload.pull_request;
+              if (!pr) {
+                core.setOutput('author', 'unknown');
+                core.setOutput('head_sha', context.sha);
+                core.setOutput('commits_url', '');
+                core.setOutput('pr_number', '0');
+                return;
+              }
             } else {
+              // issue_comment event
               const { data } = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -42,6 +53,7 @@ jobs:
             core.setOutput('author', pr.user.login);
             core.setOutput('head_sha', pr.head.sha);
             core.setOutput('commits_url', pr.commits_url);
+            core.setOutput('pr_number', pr.number.toString());
 
       - name: Check CLA for All Commits
         id: cla
@@ -188,7 +200,8 @@ jobs:
             console.log(`✅ Set CLA status: ${state} - ${description}`);
             
             // 如果需要签署 CLA 且不是评论触发，添加评论
-            if (!signed && !error && (context.eventName === 'pull_request' || context.eventName === 'pull_request_target')) {
+            const prNumber = parseInt('${{ steps.pr-info.outputs.pr_number }}') || context.issue?.number;
+            if (!signed && !error && prNumber && (context.eventName === 'pull_request' || context.eventName === 'pull_request_target' || context.eventName === 'workflow_call')) {
               const emailList = emails.split(',').map(e => e.trim()).filter(e => e);
               const unsignedList = unsigned ? unsigned.split(',').map(e => e.trim()).filter(e => e) : [];
               
@@ -208,7 +221,7 @@ jobs:
               💡 **Tip**: All contributors must sign the CLA before the PR can be merged.`;
               
               await github.rest.issues.createComment({
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 body: body
@@ -230,7 +243,7 @@ jobs:
               Your pull request can now proceed with the review process! 🎉`;
               
               await github.rest.issues.createComment({
-                issue_number: context.issue.number,
+                issue_number: prNumber || context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 body: body
@@ -258,7 +271,7 @@ jobs:
               💡 **Tip**: All contributors must sign the CLA before the PR can be merged.`;
               
               await github.rest.issues.createComment({
-                issue_number: context.issue.number,
+                issue_number: prNumber || context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 body: body
