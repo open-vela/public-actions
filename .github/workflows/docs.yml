@@ -10,6 +10,13 @@ on:
   # reusable
   workflow_call:
 
+# Restrict permissions to minimum required
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+  statuses: write
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   docs:
@@ -35,17 +42,37 @@ jobs:
 
     - name: Parse PR Description for Dependencies
       id: parse-dependencies
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_REPO: ${{ github.repository }}
       run: |
         set -x
-        # 获取当前 PR 的描述
-        cat > pull_request.body.txt <<'EOF'
-        ${{ github.event.pull_request.body }}
-        EOF
-        DEPENDS_ON=$(grep -oP 'depends-on:\s*\[[^]]+\]' pull_request.body.txt | sed 's/^ *//;s/ *$//')
+        # Use GitHub API to safely fetch PR body instead of inline expansion
+        # This prevents command injection via PR body content
+        curl -s -H "Authorization: token $GH_TOKEN" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/repos/$PR_REPO/pulls/$PR_NUMBER" \
+          | jq -r '.body // ""' > pull_request.body.txt
+
+        # Extract depends-on field with strict validation
+        DEPENDS_ON=$(grep -oP 'depends-on:\s*\[[^]]+\]' pull_request.body.txt | sed 's/^ *//;s/ *$//') || true
         echo "PR DEPENDS_ON: $DEPENDS_ON"
         DEPENDS_ON=$(echo "$DEPENDS_ON" | grep -oP '(?<=\[)[^]]+(?=\])') || true
         DEPENDS_ON=$(echo $DEPENDS_ON | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         DEPENDS_ON=$(echo "$DEPENDS_ON" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
+
+        # Validate each dependency matches expected format: owner/repo/pull/number
+        VALIDATED_DEPS=""
+        for dep in $DEPENDS_ON; do
+          if echo "$dep" | grep -qP '^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/pull/[0-9]+$'; then
+            VALIDATED_DEPS="$VALIDATED_DEPS $dep"
+          else
+            echo "WARNING: Skipping invalid dependency format: $dep"
+          fi
+        done
+        DEPENDS_ON=$(echo "$VALIDATED_DEPS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
         ALL_PR="$DEPENDS_ON ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
         ALL_PR=$(echo $ALL_PR | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         ALL_PR=$(echo "$ALL_PR" | awk '{for(i=1;i<=NF;i++) if(!a[$i]++) printf "%s%s",$i,(i==NF?ORS:OFS)}')
@@ -60,25 +87,36 @@ jobs:
         for DEPENDENCY in $DEPENDS_ON; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
           PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+
+          # Validate REPO_NAME and PR_NUMBER format to prevent injection
+          if ! echo "$REPO_NAME" | grep -qP '^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$'; then
+            echo "ERROR: Invalid repo name format: $REPO_NAME"
+            continue
+          fi
+          if ! echo "$PR_NUMBER" | grep -qP '^[0-9]+$'; then
+            echo "ERROR: Invalid PR number format: $PR_NUMBER"
+            continue
+          fi
+
+          PR_COMMITS=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
             exit 1
           fi
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
             -d '{
               "state": "pending",
               "description": "In progress",
               "context": "CI triggered by other PR",
-              "target_url": "${{ env.CURRENT_ACTION_URL }}"
+              "target_url": "'"$CURRENT_ACTION_URL"'"
             }'
-          COMMENT_BODY="CI started by ${{ github.repository }}/pull/${{ github.event.pull_request.number }}.\n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
+          COMMENT_BODY="CI started by ${{ github.repository }}/pull/${{ github.event.pull_request.number }}.\n PR list is $ALL_PR.\n CI url: $CURRENT_ACTION_URL"
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
             -d "{\"body\": \"$COMMENT_BODY\"}"
@@ -228,7 +266,9 @@ jobs:
         fi
 
     - name: Post Processing
-      if: always() # 确保无论之前的步骤成功或失败，都会执行
+      if: always()
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         echo "Job status: ${{ job.status }}"
 
@@ -240,7 +280,7 @@ jobs:
         for DEPENDENCY in ${{ env.DEPENDS_ON }}; do
           REPO_NAME=$(echo $DEPENDENCY | awk -F'/pull/' '{print $1}')
           PR_NUMBER=$(echo $DEPENDENCY | awk -F'/pull/' '{print $2}')
-          PR_COMMITS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
+          PR_COMMITS=$(curl -s -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/$REPO_NAME/pulls/$PR_NUMBER")
           LATEST_SHA=$(echo "$PR_COMMITS" | jq -r '.head.sha')
           if [[ -z "$LATEST_SHA" ]]; then
             echo "No commits found for PR #$PR_NUMBER or invalid API response."
@@ -248,18 +288,18 @@ jobs:
           fi
           set -x
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/statuses/$LATEST_SHA \
             -d '{
               "state": '"\"$ci_status\""',
               "description": "CI '"$ci_status"'",
               "context": "CI triggered by other PR",
-              "target_url": "${{ env.CURRENT_ACTION_URL }}"
+              "target_url": "'"$CURRENT_ACTION_URL"'"
             }'
-          COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: ${{ env.CURRENT_ACTION_URL }}"
+          COMMENT_BODY="CI $ci_status. \n PR list is $ALL_PR.\n CI url: $CURRENT_ACTION_URL"
           curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: token $GH_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/$REPO_NAME/issues/$PR_NUMBER/comments \
             -d "{\"body\": \"$COMMENT_BODY\"}"
