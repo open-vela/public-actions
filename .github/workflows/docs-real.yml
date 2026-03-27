@@ -32,10 +32,18 @@ jobs:
         echo "Current Action URL: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
         echo "CURRENT_ACTION_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >> $GITHUB_ENV
 
+    - name: Generate App Token
+      id: app-token
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        owner: open-vela
+
     - name: Parse PR Description for Dependencies
       id: parse-dependencies
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
         PR_REPO: ${{ github.repository }}
       run: |
@@ -155,14 +163,20 @@ jobs:
         echo "REPO_INIT=true" >> $GITHUB_ENV
 
     - name: Repo Sync
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
         df -h
         ~/bin/repo sync -c -d --no-tags -j12
         df -h
 
     - name: Fetch PR
       if: ${{ github.event_name == 'pull_request_target' || github.event_name == 'workflow_call' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
+        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
         current_path=$(pwd)
         echo "REPO_ROOT=$current_path" >> $GITHUB_ENV
         echo $(ls -atl)
@@ -257,10 +271,19 @@ jobs:
           fi
         fi
 
+    - name: Generate App Token for Post Processing
+      if: always()
+      id: app-token-post
+      uses: actions/create-github-app-token@v1
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        owner: open-vela
+
     - name: Post Processing
       if: always()
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ steps.app-token-post.outputs.token }}
       run: |
         echo "Job status: ${{ job.status }}"
 
