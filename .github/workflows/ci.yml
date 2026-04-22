@@ -182,6 +182,21 @@ jobs:
         ~/bin/repo init -u https://github.com/open-vela/manifests -b "$PR_BASE_REF" -m openvela.xml --group=default,platform-linux --depth=1 --git-lfs
         echo "REPO_INIT=true" >> $GITHUB_ENV
 
+    - name: Apply manifest PR before sync
+      if: ${{ github.event_name == 'pull_request_target' && github.repository == 'open-vela/manifests' }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: |
+        git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+        git config --global user.email "openvela-robot@xiaomi.com"
+        git config --global user.name "openvela-robot"
+        cd .repo/manifests
+        git fetch origin pull/$PR_NUMBER/head:pr-branch
+        git cherry-pick $(git rev-list --reverse HEAD..$PR_HEAD_SHA) || true
+        cd -
+
     - name: Repo Sync
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
