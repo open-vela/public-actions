@@ -511,7 +511,10 @@ jobs:
             if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
               cp ${cp_base_dir}/nuttx ${cp_base_dir}/.config $ci_artifact_name
             else
-              cp ${cp_base_dir}/nuttx ${cp_base_dir}/vela_*.bin ${cp_base_dir}/.config $ci_artifact_name
+              cp ${cp_base_dir}/nuttx ${cp_base_dir}/.config $ci_artifact_name
+              # vela_*.bin is optional: only produced by full-image configs
+              # (e.g. goldfish). Configs like qemu-* only produce nuttx ELF.
+              cp ${cp_base_dir}/vela_*.bin $ci_artifact_name 2>/dev/null || true
             fi
 
             echo "=== Cleaning up after $task ==="
@@ -612,3 +615,13 @@ jobs:
               -d "{\"body\": \"$COMMENT_BODY\"}"
             set +x
           done
+
+          # Propagate the aggregated ci-tasks status to this job so that a
+          # single required status check on 'post-processing' is sufficient
+          # to gate merges. Without this, the job would be green even when
+          # any matrix instance failed, because status reporting was only
+          # done via curl to dependent PRs.
+          if [[ "$CI_TASKS_STATUS" != "success" ]]; then
+            echo "::error::CI failed: needs.ci-tasks.result = $CI_TASKS_STATUS"
+            exit 1
+          fi
