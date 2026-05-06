@@ -210,23 +210,21 @@ jobs:
       DOCKER_BUILDKIT: 1
     strategy:
       matrix:
-        group: [ubuntu22-01, ubuntu22-02]  # 定义组
+        group: [goldfish, sil, aurix, flagchip, qemu]  # grouped by vendor / platform
         include:
-          - group: ubuntu22-01 # 第一组任务
+          - group: goldfish
             tasks:
               - goldfish-armeabi-v7a-ap@cmake
               - goldfish-arm64-v8a-ap@cmake
               - goldfish-x86_64-ap@cmake
-          - group: ubuntu22-02 # 第二组任务
+          - group: sil
             tasks:
               - vendor/openvela/boards/sil/configs/ksil_arm32r_nsh_bl@cmake
               - vendor/openvela/boards/sil/configs/ksil_arm32r_nsh_core0@cmake
               - vendor/openvela/boards/sil/configs/sil_arm32r_nsh_bl@cmake
               - vendor/openvela/boards/sil/configs/sil_arm32r_nsh_core0@cmake
-              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/bl@cmake
-              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/core0@cmake
-              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kbl@cmake
-              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kcore0@cmake
+          - group: aurix
+            tasks:
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/bl@cmake
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core0@cmake
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core1@cmake
@@ -234,11 +232,22 @@ jobs:
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core3@cmake
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core4@cmake
               - vendor/infineon/boards/aurix/tc4d9_evb/configs/core5@cmake
+          - group: flagchip
+            tasks:
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/bl@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/core0@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kbl@cmake
+              - vendor/flagchip/boards/fc7300/fc7300f8m-evb/configs/kcore0@cmake
+          - group: qemu
+            tasks:
+              - qemu-arm64-v8a-ap@cmake
+              - qemu-arm64-v8a-server@cmake
+              - qemu-armeabi-v7a-ap@cmake
+              - qemu-armeabi-v7a-bl@cmake
+              - qemu-armeabi-v7a-server@cmake
+              - qemu-armeabi-v7a-tee@cmake
+              - qemu-armeabi-v8m-ap@cmake
       fail-fast: false
-    outputs:
-      status: ${{ steps.check.outputs.status }}
-      DEPENDS_ON: ${{ needs.setup.outputs.DEPENDS_ON }}
-      CURRENT_ACTION_URL: ${{ needs.setup.outputs.CURRENT_ACTION_URL }}
     steps:
       - name: Download Snapshot and PR Info
         uses: actions/download-artifact@v4
@@ -544,17 +553,12 @@ jobs:
           path: |
             ${{ matrix.group }}
 
-      - name: Check status
-        id: check
-        if: always()
-        env:
-          JOB_STATUS: ${{ job.status }}
-        run: |
-          echo "status=${JOB_STATUS}" >> $GITHUB_OUTPUT
-
-  # 后置处理作业，用于更新依赖PR状态
+  # Post-processing job to update dependent PR statuses.
+  # Uses needs.ci-tasks.result to aggregate results across all matrix
+  # groups: it is "success" only when every matrix instance succeeds;
+  # any failure or cancellation in any group makes it "failure".
   post-processing:
-    needs: ci-tasks
+    needs: [setup, ci-tasks]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -568,9 +572,9 @@ jobs:
 
       - name: Post Processing
         env:
-          CI_TASKS_STATUS: ${{ needs.ci-tasks.outputs.status }}
-          DEPENDS_ON: ${{ needs.ci-tasks.outputs.DEPENDS_ON }}
-          CURRENT_ACTION_URL: ${{ needs.ci-tasks.outputs.CURRENT_ACTION_URL }}
+          CI_TASKS_STATUS: ${{ needs.ci-tasks.result }}
+          DEPENDS_ON: ${{ needs.setup.outputs.DEPENDS_ON }}
+          CURRENT_ACTION_URL: ${{ needs.setup.outputs.CURRENT_ACTION_URL }}
           CI_PAT: ${{ steps.app-token.outputs.token }}
         run: |
           echo "Job status: ${CI_TASKS_STATUS}"
