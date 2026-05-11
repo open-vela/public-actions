@@ -21,6 +21,7 @@ jobs:
 
   ci_dev:
     # 只在 PR 时执行，评论不触发 CI
-    if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_call') && github.event.pull_request.base.ref == 'dev'
+    # 支持 dev 及派生分支（如 dev-ai-contest-2026 等）
+    if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_call') && (github.event.pull_request.base.ref == 'dev' || startsWith(github.event.pull_request.base.ref, 'dev-'))
     uses: open-vela/public-actions/.github/workflows/ci-real.yml@dev
     secrets: inherit
