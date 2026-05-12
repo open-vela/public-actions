@@ -96,6 +96,10 @@ jobs:
           echo "✅ Commit message check passed"
 
     - name: Check Chinese in Source Files
+      # packages_apps hosts Quick App (快应用) code where Chinese UI strings
+      # and keywords are unavoidable, so source-file Chinese check is skipped
+      # for that repo. Commit message check above still runs.
+      if: ${{ env.REPO_NAME != 'packages_apps' }}
       run: |
           cd ${{ env.REPO_NAME }}
           commits="${{ github.event.pull_request.base.sha }}..HEAD"
