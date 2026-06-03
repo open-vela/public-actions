@@ -463,6 +463,18 @@ jobs:
           docker pull ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx
           df -h
 
+      - name: Clean up disk space
+        run: |
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/local/lib/android /etc/mysql /etc/php /opt/hostedtoolcache/CodeQL
+          sudo docker builder prune -a 2>/dev/null || true
+          sudo -E apt-get -y purge azure-cli* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
+          sudo -E apt-get -qq autoremove --purge
+          sudo -E apt-get -qq clean
+          df -h
+
       - name: Run CI tasks inside Docker container
         env:
           CI_WORKSPACE: ${{ github.workspace }}
