@@ -93,7 +93,21 @@ jobs:
           VALID_EMAILS=$(echo "$ALL_EMAILS" | grep -v "noreply.github.com" | grep -v "^$" | grep -v "null")
           
           if [ -z "$VALID_EMAILS" ]; then
-            echo "error=no_email" >> $GITHUB_OUTPUT
+            # No verifiable emails found. Distinguish two cases so we can give a
+            # friendlier hint instead of a generic error:
+            #   1) All commit emails are GitHub noreply addresses -> noreply_only
+            #   2) Genuinely no usable email could be determined   -> no_email
+            NOREPLY_EMAILS=$(echo "$ALL_EMAILS" | grep "noreply.github.com")
+            if [ -n "$NOREPLY_EMAILS" ]; then
+              echo "⚠️ All commit emails are GitHub noreply addresses; cannot verify CLA:"
+              echo "$NOREPLY_EMAILS" | sed 's/^/  - /'
+              NOREPLY_LIST=$(echo "$NOREPLY_EMAILS" | paste -sd ',' -)
+              echo "noreply_emails=$NOREPLY_LIST" >> $GITHUB_OUTPUT
+              echo "error=noreply_only" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Could not determine any email from commits"
+              echo "error=no_email" >> $GITHUB_OUTPUT
+            fi
             echo "signed=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -183,9 +197,13 @@ jobs:
             const emails = '${{ steps.cla.outputs.emails }}';
             const unsigned = '${{ steps.cla.outputs.unsigned }}';
             const error = '${{ steps.cla.outputs.error }}';
+            const noreplyEmails = '${{ steps.cla.outputs.noreply_emails }}';
             
             let state, description;
-            if (error === 'no_email') {
+            if (error === 'noreply_only') {
+              state = 'error';
+              description = 'Commits use GitHub noreply emails — set a public commit email to verify CLA';
+            } else if (error === 'no_email') {
               state = 'error';
               description = 'Cannot determine emails from commits';
             } else if (error === 'api_error') {
@@ -217,6 +235,51 @@ jobs:
             
             const prNumber = parseInt('${{ steps.pr-info.outputs.pr_number }}') || context.issue?.number;
             const triggerType = '${{ steps.pr-info.outputs.trigger_type }}';
+            
+            // Post a friendly hint when all commits use GitHub noreply emails.
+            // In this case we cannot match the commits to a signed CLA, so guide
+            // the contributor to use a verifiable commit email instead of just
+            // showing a generic error. Posted for both PR and /check-cla events.
+            if (error === 'noreply_only' && prNumber) {
+              const noreplyList = noreplyEmails.split(',').map(e => e.trim()).filter(e => e);
+              const body = `## ⚠️ Unable to Verify CLA — Commits Use GitHub Noreply Emails
+              
+              @${{ steps.pr-info.outputs.author }} We couldn't verify your CLA because every commit in this PR uses a GitHub **noreply** email address:
+              
+              ${noreplyList.map(email => `- \`${email}\``).join('\n')}
+              
+              This usually means **"Keep my email addresses private"** is enabled in your GitHub account, so your commits can't be matched to a signed CLA.
+              
+              **Fix steps (to be done by the PR author @${{ steps.pr-info.outputs.author }}):**
+              
+              1. **Confirm your real email has signed the CLA**: sign with your real email at https://www.openvela.com/#/community/cla
+              2. **Disable GitHub email privacy (optional)**: GitHub → **Settings → Emails**, uncheck "Keep my email addresses private", or note the real email you want to use.
+              3. **Rewrite the commits in this PR so their author is your real email, then force-push**:
+              
+              \`\`\`
+              git config user.email "the-real-email-you-signed-the-cla-with"
+              git config user.name  "Your Name"
+              # Rewrite the author/committer of every commit on this branch to the current user.email
+              git rebase -r --root --exec "git commit --amend --no-edit --reset-author"
+              git push -f
+              \`\`\`
+              
+              (If the branch has only a couple of commits, you can also run \`git rebase -i\` and mark each commit with \`--reset-author\`.)
+              
+              4. After the force-push, the CLA workflow reruns automatically; you can also comment \`/check-cla\` on the PR to re-trigger the check.
+              
+              **📋 View detailed check results:** [Action Run #${context.runId}](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              
+              ---
+              💡 **Tip**: Use the same email you signed the CLA with — that's how we confirm the signature.`;
+              
+              await github.rest.issues.createComment({
+                issue_number: prNumber,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
             
             // Post comment when CLA not signed and triggered by PR event
             if (!signed && !error && prNumber && triggerType === 'pr') {
