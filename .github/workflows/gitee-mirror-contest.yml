@@ -5,7 +5,7 @@ name: gitee-mirror-contest
 # scope but NOT repo-creation (groups) scope. Gitee repos must be pre-created;
 # a missing Gitee repo is skipped with a warning (does not fail the run).
 # Only mirrors refs/heads/* and refs/tags/* (GitHub's internal refs/pull/* are
-# excluded on purpose).
+# excluded on purpose). Repos are mirrored in parallel to keep each pass short.
 
 on:
   schedule:
@@ -33,27 +33,33 @@ jobs:
           gh api "orgs/$ORG/repos?per_page=100&type=public" --paginate --jq '.[].name' \
             | grep '^contest2026' | sort -u > repos.txt
           total=$(wc -l < repos.txt); echo "contest repos: $total"
-          ok=0; skip=0; fail=0
-          while read -r R; do
-            [ -z "$R" ] && continue
+
+          mirror_one() {
+            R="$1"; [ -z "$R" ] && return 0
             code=$(curl -s -o /dev/null -w '%{http_code}' \
               -H "Authorization: token $GITEE_TOKEN" \
               "https://gitee.com/api/v5/repos/$ORG/$R")
-            if [ "$code" != "200" ]; then
-              echo "SKIP (no gitee repo, http=$code): $R"; skip=$((skip+1)); continue
-            fi
-            rm -rf b.git
+            if [ "$code" != "200" ]; then echo "SKIP $R (no gitee repo http=$code)"; return 0; fi
+            d=$(mktemp -d)
             if ! git clone --quiet --mirror \
-                "https://x-access-token:${GH_TOKEN}@github.com/$ORG/$R.git" b.git; then
-              echo "CLONE FAIL: $R"; fail=$((fail+1)); continue
+                "https://x-access-token:${GH_TOKEN}@github.com/$ORG/$R.git" "$d/b.git"; then
+              echo "FAIL $R (clone)"; rm -rf "$d"; return 0
             fi
-            if git -C b.git push --quiet --prune \
+            if git -C "$d/b.git" push --quiet --prune \
                 "https://openvela-robot:${GITEE_TOKEN}@gitee.com/$ORG/$R.git" \
                 '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'; then
-              ok=$((ok+1))
+              echo "OK $R"
             else
-              echo "PUSH FAIL: $R"; fail=$((fail+1))
+              echo "FAIL $R (push)"
             fi
-          done < repos.txt
+            rm -rf "$d"
+          }
+          export -f mirror_one
+          export GH_TOKEN GITEE_TOKEN ORG
+
+          xargs -P 10 -I{} bash -c 'mirror_one "$@"' _ {} < repos.txt | tee result.txt
+          ok=$(grep -c '^OK '   result.txt || true)
+          skip=$(grep -c '^SKIP ' result.txt || true)
+          fail=$(grep -c '^FAIL ' result.txt || true)
           echo "=== summary: ok=$ok skip=$skip fail=$fail total=$total ==="
           [ "$fail" -eq 0 ]
