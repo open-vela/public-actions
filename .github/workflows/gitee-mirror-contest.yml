@@ -1,0 +1,59 @@
+name: gitee-mirror-contest
+
+# Mirror all open-vela contest2026* repositories from GitHub to Gitee.
+# Push-only: uses a dedicated Gitee token (GITEE_TOKEN secret) that has push
+# scope but NOT repo-creation (groups) scope. Gitee repos must be pre-created;
+# a missing Gitee repo is skipped with a warning (does not fail the run).
+# Only mirrors refs/heads/* and refs/tags/* (GitHub's internal refs/pull/* are
+# excluded on purpose).
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes
+  workflow_dispatch: {}
+
+concurrency:
+  group: gitee-mirror-contest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror contest2026* GitHub -> Gitee
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          ORG: open-vela
+        run: |
+          set -uo pipefail
+          gh api "orgs/$ORG/repos?per_page=100&type=public" --paginate --jq '.[].name' \
+            | grep '^contest2026' | sort -u > repos.txt
+          total=$(wc -l < repos.txt); echo "contest repos: $total"
+          ok=0; skip=0; fail=0
+          while read -r R; do
+            [ -z "$R" ] && continue
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H "Authorization: token $GITEE_TOKEN" \
+              "https://gitee.com/api/v5/repos/$ORG/$R")
+            if [ "$code" != "200" ]; then
+              echo "SKIP (no gitee repo, http=$code): $R"; skip=$((skip+1)); continue
+            fi
+            rm -rf b.git
+            if ! git clone --quiet --mirror \
+                "https://x-access-token:${GH_TOKEN}@github.com/$ORG/$R.git" b.git; then
+              echo "CLONE FAIL: $R"; fail=$((fail+1)); continue
+            fi
+            if git -C b.git push --quiet --prune \
+                "https://openvela-robot:${GITEE_TOKEN}@gitee.com/$ORG/$R.git" \
+                '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'; then
+              ok=$((ok+1))
+            else
+              echo "PUSH FAIL: $R"; fail=$((fail+1))
+            fi
+          done < repos.txt
+          echo "=== summary: ok=$ok skip=$skip fail=$fail total=$total ==="
+          [ "$fail" -eq 0 ]
