@@ -6,6 +6,7 @@ name: gitee-mirror-contest
 # a missing Gitee repo is skipped with a warning (does not fail the run).
 # Only mirrors refs/heads/* and refs/tags/* (GitHub's internal refs/pull/* are
 # excluded on purpose). Repos are mirrored in parallel to keep each pass short.
+# GET/push are retried to absorb transient Gitee API rate-limiting.
 
 on:
   schedule:
@@ -36,28 +37,39 @@ jobs:
 
           mirror_one() {
             R="$1"; [ -z "$R" ] && return 0
-            code=$(curl -s -o /dev/null -w '%{http_code}' \
-              -H "Authorization: token $GITEE_TOKEN" \
-              "https://gitee.com/api/v5/repos/$ORG/$R")
-            if [ "$code" != "200" ]; then echo "SKIP $R (no gitee repo http=$code)"; return 0; fi
+            # existence check with retry (absorb transient rate-limit non-200)
+            code=000
+            for a in 1 2 3 4; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' \
+                -H "Authorization: token $GITEE_TOKEN" \
+                "https://gitee.com/api/v5/repos/$ORG/$R")
+              [ "$code" = "200" ] && break
+              [ "$code" = "404" ] && break
+              sleep $((a*3))
+            done
+            if [ "$code" != "200" ]; then echo "SKIP $R (gitee repo http=$code)"; return 0; fi
             d=$(mktemp -d)
             if ! git clone --quiet --mirror \
                 "https://x-access-token:${GH_TOKEN}@github.com/$ORG/$R.git" "$d/b.git"; then
               echo "FAIL $R (clone)"; rm -rf "$d"; return 0
             fi
-            if git -C "$d/b.git" push --quiet --prune \
-                "https://openvela-robot:${GITEE_TOKEN}@gitee.com/$ORG/$R.git" \
-                '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'; then
-              echo "OK $R"
-            else
-              echo "FAIL $R (push)"
-            fi
+            # push with retry
+            ok=""
+            for a in 1 2 3; do
+              if git -C "$d/b.git" push --quiet --prune \
+                  "https://openvela-robot:${GITEE_TOKEN}@gitee.com/$ORG/$R.git" \
+                  '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'; then
+                ok=1; break
+              fi
+              sleep $((a*4))
+            done
+            if [ -n "$ok" ]; then echo "OK $R"; else echo "FAIL $R (push)"; fi
             rm -rf "$d"
           }
           export -f mirror_one
           export GH_TOKEN GITEE_TOKEN ORG
 
-          xargs -P 10 -I{} bash -c 'mirror_one "$@"' _ {} < repos.txt | tee result.txt
+          xargs -P 6 -I{} bash -c 'mirror_one "$@"' _ {} < repos.txt | tee result.txt
           ok=$(grep -c '^OK '   result.txt || true)
           skip=$(grep -c '^SKIP ' result.txt || true)
           fail=$(grep -c '^FAIL ' result.txt || true)
