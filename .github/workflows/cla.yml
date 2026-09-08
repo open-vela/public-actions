@@ -124,7 +124,7 @@ jobs:
             if [ ! -z "$EMAIL" ]; then
               echo "   🔍 Checking $EMAIL..."
               
-              # 添加超时和重试机制
+              # Add a timeout and a retry loop around the CLA API call
               RESPONSE=""
               RETRY_COUNT=0
               MAX_RETRIES=3
@@ -135,7 +135,7 @@ jobs:
                   sleep 2
                 fi
                 
-                # 使用超时设置的 curl 命令
+                # curl with explicit connect and total timeouts
                 RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 \
                   "https://vela-website.hybrid.xiaomi.com/openvela_cla/check?email=$EMAIL" 2>/dev/null || echo "")
                 
@@ -220,7 +220,7 @@ jobs:
               description = `❌ CLA required for ${unsignedCount}/${totalCount} contributor(s)`;
             }
             
-            // 只创建 cla/signature 状态检查
+            // Only create the cla/signature status check
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
