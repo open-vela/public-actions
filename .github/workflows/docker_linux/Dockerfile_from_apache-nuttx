@@ -20,6 +20,16 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
     mtools \
     libc++abi1 \
     srecord
+
+# libunwind-dev: arch/sim links -lunwind unconditionally, while the base image
+# carries only the libunwind8 runtime. i386 as well, for CONFIG_SIM_M32 configs.
+# python3-venv: the base image's Python has no ensurepip.
+RUN dpkg --print-foreign-architectures | grep -q i386 || dpkg --add-architecture i386
+RUN apt-get update
+RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
+    libunwind-dev \
+    libunwind-dev:i386 \
+    python3-venv
 RUN git lfs install
 RUN git lfs --version
 RUN pip3 install matplotlib==3.6.2
