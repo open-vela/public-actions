@@ -124,7 +124,7 @@ jobs:
             if [ ! -z "$EMAIL" ]; then
               echo "   🔍 Checking $EMAIL..."
               
-              # 添加超时和重试机制
+              # Add a timeout and a retry loop around the CLA API call
               RESPONSE=""
               RETRY_COUNT=0
               MAX_RETRIES=3
@@ -135,7 +135,7 @@ jobs:
                   sleep 2
                 fi
                 
-                # 使用超时设置的 curl 命令
+                # curl with explicit connect and total timeouts
                 RESPONSE=$(curl -s --max-time 10 --connect-timeout 5 \
                   "https://vela-website.hybrid.xiaomi.com/openvela_cla/check?email=$EMAIL" 2>/dev/null || echo "")
                 
@@ -220,7 +220,7 @@ jobs:
               description = `❌ CLA required for ${unsignedCount}/${totalCount} contributor(s)`;
             }
             
-            // 只创建 cla/signature 状态检查
+            // Only create the cla/signature status check
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -359,9 +359,31 @@ jobs:
               });
             }
 
-      - name: Fail if CLA not signed
+      # Report an unsigned CLA as a warning instead of failing this job.
+      #
+      # The authoritative CLA verdict is the `cla/signature` commit status,
+      # which the step above writes directly to the PR head SHA. That status
+      # can be overwritten by a later `/check-cla` run, so it always reflects
+      # the current signature state.
+      #
+      # This job's own CheckRun (`... / cla / cla-check`) cannot: GitHub Actions
+      # binds it to the workflow run's head_sha. For `issue_comment` events
+      # (that is, every `/check-cla` re-check) head_sha is the default branch
+      # tip, not the PR head, so the re-check's green CheckRun lands on the
+      # default branch while the red one from the initial
+      # `pull_request_target` run stays on the PR head forever. Contributors
+      # who sign the CLA after the first failure were left with a red X that
+      # no re-check could ever clear, and maintainers had to re-run the whole
+      # CI run by hand to get rid of it.
+      #
+      # Dropping the `exit 1` costs no merge protection: `cla/signature` is a
+      # required status check in the ruleset of every openvela repository,
+      # while `cla-check` is required in none of them.
+      - name: Report unsigned CLA
         if: steps.cla.outputs.signed == 'false' && steps.cla.outputs.error == ''
         run: |
+          echo "::warning title=CLA signature required::Unsigned contributors: ${{ steps.cla.outputs.unsigned }}"
           echo "❌ CLA signature required"
           echo "Unsigned contributors: ${{ steps.cla.outputs.unsigned }}"
-          exit 1
+          echo "The cla/signature status check on the pull request carries the"
+          echo "authoritative result and blocks the merge until it turns green."
