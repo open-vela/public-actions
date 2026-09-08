@@ -359,9 +359,31 @@ jobs:
               });
             }
 
-      - name: Fail if CLA not signed
+      # Report an unsigned CLA as a warning instead of failing this job.
+      #
+      # The authoritative CLA verdict is the `cla/signature` commit status,
+      # which the step above writes directly to the PR head SHA. That status
+      # can be overwritten by a later `/check-cla` run, so it always reflects
+      # the current signature state.
+      #
+      # This job's own CheckRun (`... / cla / cla-check`) cannot: GitHub Actions
+      # binds it to the workflow run's head_sha. For `issue_comment` events
+      # (that is, every `/check-cla` re-check) head_sha is the default branch
+      # tip, not the PR head, so the re-check's green CheckRun lands on the
+      # default branch while the red one from the initial
+      # `pull_request_target` run stays on the PR head forever. Contributors
+      # who sign the CLA after the first failure were left with a red X that
+      # no re-check could ever clear, and maintainers had to re-run the whole
+      # CI run by hand to get rid of it.
+      #
+      # Dropping the `exit 1` costs no merge protection: `cla/signature` is a
+      # required status check in the ruleset of every openvela repository,
+      # while `cla-check` is required in none of them.
+      - name: Report unsigned CLA
         if: steps.cla.outputs.signed == 'false' && steps.cla.outputs.error == ''
         run: |
+          echo "::warning title=CLA signature required::Unsigned contributors: ${{ steps.cla.outputs.unsigned }}"
           echo "❌ CLA signature required"
           echo "Unsigned contributors: ${{ steps.cla.outputs.unsigned }}"
-          exit 1
+          echo "The cla/signature status check on the pull request carries the"
+          echo "authoritative result and blocks the merge until it turns green."
