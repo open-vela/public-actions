@@ -221,11 +221,13 @@ jobs:
   ci-tasks:
     needs: setup
     runs-on: ubuntu-latest
+    # Only the ntfc group is bounded here; the others keep GitHub's 360 default.
+    timeout-minutes: ${{ matrix.group == 'ntfc' && 140 || 360 }}
     env:
       DOCKER_BUILDKIT: 1
     strategy:
       matrix:
-        group: [goldfish, sil, aurix, flagchip, qemu]  # grouped by vendor / platform
+        group: [goldfish, sil, aurix, flagchip, qemu, ntfc]  # grouped by vendor / platform
         include:
           - group: goldfish
             tasks:
@@ -262,6 +264,11 @@ jobs:
               - qemu-armeabi-v7a-server@cmake
               - qemu-armeabi-v7a-tee@cmake
               - qemu-armeabi-v8m-ap@cmake
+          # Runtime-test group. "ntfc" in the suffix runs the NuttX Test
+          # Framework for Community on the build output.
+          - group: ntfc
+            tasks:
+              - sim:citest@cmake@ntfc
       fail-fast: false
     steps:
       - name: Maximize build space
@@ -495,11 +502,17 @@ jobs:
             rm -rf output || true
             cmake_flag=""
             cp_base_dir="nuttx"
+            task_flags=""
+            run_ntfc=0
             echo "=== Starting task: $task ==="
             if [[ "$task" == *@* ]]; then
               cmake_flag="--cmake"
+              task_flags="${task#*@}"
               task=$(echo "$task" | awk -F '@' '{print $1}')
               cp_base_dir="cmake_out/*"
+            fi
+            if [[ "@${task_flags}@" == *"@ntfc@"* ]]; then
+              run_ntfc=1
             fi
             if [[ "$task" == *:* ]] || [[ "$task" == *vendor/* ]]; then
               build_cmd="./build.sh $task $cmake_flag -e -Werror -j8"
@@ -559,9 +572,66 @@ jobs:
                 result="success"
               fi
             fi
+
+            if [ "$run_ntfc" -eq 1 ]; then
+              # Hand off to the separately bounded runtime step below.
+              echo "NTFC_TASK=$task" >> $GITHUB_ENV
+              echo "NTFC_ARTIFACT=$ci_artifact_name" >> $GITHUB_ENV
+            fi
           done
 
+      # Own step, own timeout: a step timeout fails the step, while a job
+      # timeout cancels the job and would skip the upload below.
+      - name: Run NTFC runtime tests
+        if: ${{ matrix.group == 'ntfc' }}
+        timeout-minutes: 110
+        env:
+          CI_WORKSPACE: ${{ github.workspace }}
+          CI_MATRIX_GROUP: ${{ matrix.group }}
+        run: |
+          set -e
+          cd "${CI_WORKSPACE}"
+          task="${NTFC_TASK}"
+          ci_artifact_name="${NTFC_ARTIFACT}"
+          if [ -z "$task" ] || [ -z "$ci_artifact_name" ]; then
+            echo "::error::the ntfc group ran no task that set NTFC_TASK"
+            exit 1
+          fi
+          echo "=== Run NTFC runtime test: $task ==="
+          ntfc_board="${task%%:*}"
+          ntfc_config="${task##*:}"
+          ntfc_cfgdir=$(ls -d nuttx/boards/*/*/"${ntfc_board}"/configs/"${ntfc_config}" 2>/dev/null | head -1)
+          if [ -z "$ntfc_cfgdir" ] || [ ! -f "$ntfc_cfgdir/config.yaml" ] || [ ! -x "$ntfc_cfgdir/run.sh" ]; then
+            echo "::error::$task is flagged ntfc but needs both config.yaml and an executable run.sh in its board config directory"
+            exit 1
+          fi
+          echo "NTFC metadata: $ntfc_cfgdir"
+          # Installed into a throwaway virtualenv so the image's pinned pytest
+          # is left alone. NTFCDIR stays outside "${CI_MATRIX_GROUP}", which
+          # holds the artifacts that get uploaded.
+          docker run --rm \
+            -v "${CI_WORKSPACE}":/workspace \
+            -w /workspace \
+            -e NTFCDIR=/workspace/.ntfc \
+            -e CURRENTCONFDIR="/workspace/${ntfc_cfgdir}" \
+            -e ARTIFACTCONFDIR="/workspace/${ci_artifact_name}" \
+            ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
+            /bin/bash -c "set -e && python3 --version && \
+              python3 -m venv /workspace/.ntfc-venv && \
+              /workspace/.ntfc-venv/bin/pip install --quiet ntfc==0.0.1 pytest==9.1.1 && \
+              export PATH=/workspace/.ntfc-venv/bin:\$PATH && ntfc --help > /dev/null && \
+              rm -rf /workspace/.ntfc && mkdir -p /workspace/.ntfc/external && \
+              git clone --depth=1 --branch release-0.0.1 \
+                https://github.com/apache/nuttx-ntfc-testing.git \
+                /workspace/.ntfc/external/nuttx-testing && \
+              cp -a ${ci_artifact_name}/. nuttx/ && ls -atl nuttx/nuttx nuttx/.config && \
+              bash /workspace/${ntfc_cfgdir}/run.sh"
+          echo "NTFC runtime test passed: $task"
+
+      # Unchanged for the other groups: upload on success only. ntfc also
+      # uploads on failure, which is when its diagnostics are needed.
       - name: Archive CI Build Package
+        if: ${{ success() || (!cancelled() && matrix.group == 'ntfc') }}
         uses: actions/upload-artifact@v4
         with:
           name: Build_Package_${{ matrix.group }}
