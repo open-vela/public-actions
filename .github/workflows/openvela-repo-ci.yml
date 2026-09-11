@@ -1,0 +1,299 @@
+name: OpenVela Repo CI
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Docker image containing OpenVela CI tools.
+        default: ghcr.io/open-vela/openvela-ci-linux:dev
+        required: false
+        type: string
+      manifest-url:
+        description: Repo manifest URL.
+        default: https://github.com/open-vela/manifests.git
+        required: false
+        type: string
+      manifest-branch:
+        description: Repo manifest branch.
+        default: dev
+        required: false
+        type: string
+      manifest-file:
+        description: Repo manifest file.
+        default: openvela.xml
+        required: false
+        type: string
+      manifest-groups:
+        description: Optional repo manifest groups. Empty uses manifest defaults.
+        default: ""
+        required: false
+        type: string
+      testlist:
+        description: >-
+          Testlist under the nuttx tree, e.g. tools/ci/testlist/sim-01.dat.
+        default: tools/ci/testlist/sim-01.dat
+        required: false
+        type: string
+      max-targets:
+        description: Maximum number of testlist targets to build.
+        default: "1"
+        required: false
+        type: string
+      run-runtime-tests:
+        description: Run target run.sh scripts after successful builds.
+        default: false
+        required: false
+        type: boolean
+      require-runtime-tests:
+        description: Fail runtime-enabled jobs if a target has no executable run.sh.
+        default: false
+        required: false
+        type: boolean
+      ntfc-testing-url:
+        description: NTFC test case repository.
+        default: https://github.com/apache/nuttx-ntfc-testing.git
+        required: false
+        type: string
+      ntfc-testing-branch:
+        description: NTFC test case branch or tag.
+        default: release-0.0.1
+        required: false
+        type: string
+      jobs:
+        description: Parallelism for repo sync and build.
+        default: "4"
+        required: false
+        type: string
+      repo-path:
+        description: Manifest checkout path for the repository under test.
+        default: ""
+        required: false
+        type: string
+      artifact-name:
+        description: Uploaded artifact name.
+        default: openvela-ci-artifacts
+        required: false
+        type: string
+      ci-assets-repository:
+        description: Repository containing OpenVela CI testlists.
+        default: open-vela/public-actions
+        required: false
+        type: string
+      ci-assets-ref:
+        description: Ref for ci-assets-repository.
+        default: dev
+        required: false
+        type: string
+      job-name:
+        description: Display name for the job.
+        default: build
+        required: false
+        type: string
+      prune-workspace-paths:
+        description: >-
+          Space-separated workspace-relative paths removed after the overlay
+          and before the build, e.g. manifest checkouts that must not
+          shadow a repository's own build logic.
+        default: ""
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  openvela:
+    name: ${{ inputs.job-name }}
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ inputs.image }}
+      options: --user root
+    steps:
+      - name: Checkout change
+        uses: actions/checkout@v5
+        with:
+          path: change
+          fetch-depth: 0
+
+      - name: Checkout CI assets
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.ci-assets-repository }}
+          ref: ${{ inputs.ci-assets-ref }}
+          path: ci-assets
+
+      - name: Initialize OpenVela workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${GITHUB_WORKSPACE}/openvela"
+          cd "${GITHUB_WORKSPACE}/openvela"
+
+          init_args=(
+            --url "${{ inputs.manifest-url }}" \
+            --branch "${{ inputs.manifest-branch }}" \
+            --manifest "${{ inputs.manifest-file }}" \
+            --jobs "${{ inputs.jobs }}"
+          )
+
+          if [[ -n "${{ inputs.manifest-groups }}" ]]; then
+            init_args+=(--groups "${{ inputs.manifest-groups }}")
+          fi
+
+          openvela-init "${init_args[@]}"
+
+      - name: Resolve repository path
+        id: repo_path
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo_path="${{ inputs.repo-path }}"
+          if [[ -z "${repo_path}" ]]; then
+            repo_name="${GITHUB_REPOSITORY#*/}"
+            manifest="${GITHUB_WORKSPACE}/openvela/.repo/manifests/${{ inputs.manifest-file }}"
+
+            repo_path="$(python3 - "${manifest}" "${repo_name}" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          manifest_path, repo_name = sys.argv[1:3]
+          root = ET.parse(manifest_path).getroot()
+          matches = [
+              project.attrib["path"]
+              for project in root.findall("project")
+              if project.attrib.get("name") == repo_name
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one project named {repo_name!r}, found {len(matches)}"
+              )
+          print(matches[0])
+          PY
+          )"
+          fi
+
+          if [[ -z "${repo_path}" || "${repo_path}" == /* || "${repo_path}" == *".."* ]]; then
+            echo "Invalid repo path: ${repo_path}" >&2
+            exit 1
+          fi
+
+          echo "path=${repo_path}" >> "${GITHUB_OUTPUT}"
+          echo "OpenVela repository path: ${repo_path}"
+
+      - name: Report branch alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo_path="${{ steps.repo_path.outputs.path }}"
+          manifest_dir="${GITHUB_WORKSPACE}/openvela/${repo_path}"
+          change_dir="${GITHUB_WORKSPACE}/change"
+          manifest_head="$(git -C "${manifest_dir}" rev-parse HEAD)"
+          change_head="$(git -C "${change_dir}" rev-parse HEAD)"
+
+          echo "Manifest branch: ${{ inputs.manifest-branch }}"
+          echo "Manifest ${repo_path} revision: ${manifest_head}"
+          echo "Change revision: ${change_head}"
+
+          if ! git -C "${change_dir}" merge-base --is-ancestor "${manifest_head}" HEAD; then
+            echo "::warning::The repository under test is not based on the manifest ${repo_path} revision. CI syncs all OpenVela repositories from manifest branch '${{ inputs.manifest-branch }}' and overlays only '${repo_path}'. Rebase the tested branch onto the same OpenVela branch selected by the manifest, normally 'dev' for contribution work or 'trunk' for stable-branch work."
+          fi
+
+      - name: Overlay repository under test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo_path="${{ steps.repo_path.outputs.path }}"
+          source_dir="${GITHUB_WORKSPACE}/change/"
+          target_dir="${GITHUB_WORKSPACE}/openvela/${repo_path}"
+          manifest="${GITHUB_WORKSPACE}/openvela/.repo/manifests/${{ inputs.manifest-file }}"
+          exclude_file="${RUNNER_TEMP}/openvela-rsync-excludes.txt"
+
+          python3 - "${manifest}" "${repo_path}" > "${exclude_file}" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          manifest_path, repo_path = sys.argv[1:3]
+          repo_prefix = repo_path.rstrip("/") + "/"
+
+          print("/.git")
+          for project in ET.parse(manifest_path).getroot().findall("project"):
+              path = project.attrib.get("path")
+              if path and path.startswith(repo_prefix):
+                  print("/" + path[len(repo_prefix):].rstrip("/") + "/***")
+          PY
+
+          mkdir -p "$(dirname "${target_dir}")"
+          mkdir -p "${target_dir}"
+          rsync -a --delete --exclude-from="${exclude_file}" "${source_dir}" "${target_dir}/"
+          git -C "${target_dir}" add -A
+
+      - name: Prune workspace paths
+        if: ${{ inputs.prune-workspace-paths != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for p in ${{ inputs.prune-workspace-paths }}; do
+            if [[ "${p}" == /* || "${p}" == *".."* ]]; then
+              echo "Invalid prune path: ${p}" >&2
+              exit 1
+            fi
+            echo "Pruning ${p}"
+            rm -rf "${GITHUB_WORKSPACE}/openvela/${p}"
+          done
+
+      - name: Prepare NTFC
+        if: ${{ inputs.run-runtime-tests }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ntfc_dir="${GITHUB_WORKSPACE}/ntfc"
+          openvela-ntfc-setup \
+            --dir "${ntfc_dir}" \
+            --repo "${{ inputs.ntfc-testing-url }}" \
+            --branch "${{ inputs.ntfc-testing-branch }}" \
+            --jobs "${{ inputs.jobs }}"
+
+          echo "NTFCDIR=${ntfc_dir}" >> "${GITHUB_ENV}"
+
+      - name: Run OpenVela CI build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          testlist="${{ inputs.testlist }}"
+          workspace="${GITHUB_WORKSPACE}/openvela"
+
+          if [[ "${testlist}" == /* || "${testlist}" == *".."* ]]; then
+            echo "Invalid testlist path: ${testlist}" >&2
+            exit 1
+          fi
+
+          # Resolved from the workspace nuttx tree: the overlay when nuttx
+          # is under test, the manifest checkout otherwise.
+          adapter_args=(
+            --workspace "${workspace}"
+            --repo-path "nuttx"
+            --testlist "${workspace}/nuttx/${testlist}"
+            --max-targets "${{ inputs.max-targets }}"
+            --jobs "${{ inputs.jobs }}"
+          )
+          if [[ "${{ inputs.run-runtime-tests }}" == "true" ]]; then
+            adapter_args+=(--run-tests)
+          fi
+          if [[ "${{ inputs.require-runtime-tests }}" == "true" ]]; then
+            adapter_args+=(--require-run-script)
+          fi
+          bash "${GITHUB_WORKSPACE}/ci-assets/tools/openvela-testbuild-ci" "${adapter_args[@]}"
+      - name: Upload CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: openvela/ci-artifacts/**
+          if-no-files-found: warn
