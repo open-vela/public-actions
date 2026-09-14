@@ -1,0 +1,39 @@
+name: cla
+
+# Produce the cla/signature status for this repository's OWN pull requests, by
+# calling the shared reusable CLA workflow -- exactly what every other openvela
+# repo does.
+#
+# Why this file is needed at all: the workflow that produces cla/signature lives
+# at .github/workflows/cla.yml, but only on the dev branch. Workflows for a
+# repository are resolved from its default branch, which here is trunk -- so
+# dev's dispatcher never ran for this repo's PRs. Verified on PR #70 (base dev):
+# its CI run executed trunk's self-contained ci.yml with an empty
+# referenced_workflows list, instead of dev's dispatcher which would have
+# referenced cla.yml@dev. trunk's ci.yml has no cla job and no issue_comment
+# trigger, so /check-cla was inert here too. Net effect: the cla/signature check
+# that ci-check-dev and ci-check-trunk both require could never appear, and every
+# merge needed a maintainer bypass.
+#
+# Living on trunk covers PRs targeting any branch of this repo, because that is
+# where resolution happens; a copy on dev would be redundant and would not run.
+#
+# Deliberately NOT named cla.yml: a caller at cla.yml@trunk pointing at
+# cla.yml@dev is the same repo and path at a different ref, and there is no
+# reason to discover the hard way how GitHub's self-call detection treats that.
+#
+# No top-level permissions block, matching the other repos: the reusable workflow
+# declares the statuses/checks write scopes it needs, and a caller cannot grant
+# more than it holds itself.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  cla:
+    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && contains(github.event.comment.body, '/check-cla'))
+    uses: open-vela/public-actions/.github/workflows/cla.yml@dev
+    secrets: inherit
