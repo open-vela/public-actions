@@ -1,0 +1,97 @@
+name: cla-watchdog
+
+# Catch PRs whose required cla/signature status was never reported.
+#
+# The cla workflow posts the cla/signature commit status that repository
+# rulesets require for merging. GitHub occasionally drops the event that should
+# start that workflow (either the repo stops dispatching events altogether, or a
+# single run is created and never scheduled), and the PR then sits BLOCKED
+# forever on a permanently pending required check with nothing for the author to
+# click.
+#
+# This job scans every open PR in the org -- all repositories, all branches --
+# and for any whose head commit carries no cla/signature status it posts
+# /check-cla, the documented way to re-trigger the check. If a later pass finds
+# the status still missing for a head commit already retried, the repo is
+# dropping events entirely: the run then fails with the Actions-reset commands
+# in its job summary, because that part needs a human.
+#
+# A missing status only matters where it is actually required, so a PR is
+# reported only when an active ruleset on its repository lists cla/signature as
+# a required check. That gate keeps sandbox repos (test, test_ci) and repos on
+# an older context name out of the report -- flagging them would leave the
+# watchdog permanently red for something nobody waits on. Archived repos are
+# skipped too, since they cannot run workflows.
+#
+# public-actions is excluded by default: its own PRs can never obtain
+# cla/signature (cla.yml exists only on dev, while workflows for this repo
+# resolve from the default branch trunk, whose ci.yml has no cla job and no
+# issue_comment trigger), so /check-cla cannot help and those PRs are merged
+# with a maintainer bypass instead. Drop it from EXCLUDE_REPOS once trunk gets a
+# cla.yml.
+#
+# Detection intentionally ignores actions/runs counts: GitHub ages old run
+# records out, so "zero runs" is also what a merely idle repo looks like.
+
+on:
+  schedule:
+    - cron: '25 * * * *'   # hourly, offset off the hour to dodge the cron rush
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report only, never post /check-cla'
+        type: boolean
+        default: false
+      min_age_minutes:
+        description: 'Ignore PRs whose head commit is newer than this many minutes'
+        default: '30'
+      repo_prefix:
+        description: 'Only scan repositories whose name starts with this (empty = all)'
+        default: ''
+      exclude_repos:
+        description: 'Comma-separated repository names to skip'
+        default: 'public-actions'
+      required_context:
+        description: 'Commit status context that must be present'
+        default: 'cla/signature'
+
+concurrency:
+  group: cla-watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Comments must come from a token that is NOT this repo's GITHUB_TOKEN:
+      # events triggered by GITHUB_TOKEN never start a new workflow run, so a
+      # /check-cla posted with it would be silently inert. An app installation
+      # token does trigger workflows, and it is also what lets the ruleset gate
+      # read other repositories.
+      - name: Generate App Token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: open-vela
+
+      - name: Scan PRs for a missing CLA status
+        env:
+          # Read path only needs public data, so keep it on the scoped token.
+          GH_TOKEN: ${{ github.token }}
+          GH_WRITE_TOKEN: ${{ steps.app-token.outputs.token || secrets.CI_PAT_ROBOT }}
+          ORG: open-vela
+          REPO_PREFIX: ${{ github.event.inputs.repo_prefix || '' }}
+          EXCLUDE_REPOS: ${{ github.event.inputs.exclude_repos || 'public-actions' }}
+          REQUIRED_CONTEXT: ${{ github.event.inputs.required_context || 'cla/signature' }}
+          MIN_AGE_MINUTES: ${{ github.event.inputs.min_age_minutes || '30' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: python3 .github/scripts/cla_watchdog.py

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Watchdog for contest PRs whose required CLA status never got reported.
+"""Watchdog for PRs whose required CLA status never got reported.
 
-Contest repositories gate merges on a required status check (``cla/signature``)
-that is produced by the ``cla`` workflow. Occasionally GitHub drops the event
-that should start that workflow, so the status is never posted and the PR stays
-blocked forever with nothing to click on:
+openvela repositories gate merges on a required status check
+(``cla/signature``) produced by the ``cla`` workflow. Occasionally GitHub drops
+the event that should start that workflow, so the status is never posted and
+the PR stays blocked forever with nothing to click on:
 
   * the whole repository stops dispatching Actions events (no workflow run
     record is created at all), or
@@ -16,6 +16,14 @@ Detection deliberately does NOT look at ``actions/runs`` counts -- GitHub ages
 old run records out, so a repository with zero runs may simply have been idle.
 The only reliable signal is: an open PR whose head commit carries no
 ``cla/signature`` status at all.
+
+A missing status is only a problem where the status is actually required, so a
+PR is reported only when its repository has an active ruleset listing the
+context as a required check. That gate is what keeps sandbox repositories
+(``test``, ``test_ci``) and repositories still using an older context name out
+of the report -- flagging them would produce a permanently red watchdog for
+something nobody is waiting on. Archived repositories are skipped for the same
+reason: they cannot run workflows at all.
 
 Remedy is staged:
 
@@ -43,7 +51,7 @@ from datetime import datetime, timezone
 
 API = "https://api.github.com"
 GRAPHQL = f"{API}/graphql"
-MARKER_PREFIX = "<!-- contest-cla-watchdog retry oid="
+MARKER_PREFIX = "<!-- cla-watchdog retry oid="
 
 SEARCH_QUERY = """
 query($q: String!, $after: String) {
@@ -56,7 +64,8 @@ query($q: String!, $after: String) {
         url
         createdAt
         isDraft
-        repository { name }
+        baseRefName
+        repository { name isArchived }
         commits(last: 1) {
           nodes {
             commit {
@@ -81,7 +90,8 @@ query($q: String!, $after: String) {
 
 
 def env(name: str, default: str = "") -> str:
-    return (os.environ.get(name) or default).strip()
+    value = os.environ.get(name)
+    return default if value is None or not value.strip() else value.strip()
 
 
 def env_flag(name: str) -> bool:
@@ -111,8 +121,8 @@ def parse_ts(value: str) -> datetime:
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
-def collect_open_prs(token: str, org: str, prefix: str) -> list[dict]:
-    """Return every open PR in `org` whose repository name starts with `prefix`.
+def collect_open_prs(token: str, org: str, prefix: str, exclude: set[str]) -> list[dict]:
+    """Return every open PR in `org`, on any branch, that is worth checking.
 
     One GraphQL search page carries the PR, its head commit and that commit's
     status contexts, so the whole scan costs a handful of calls instead of two
@@ -125,8 +135,9 @@ def collect_open_prs(token: str, org: str, prefix: str) -> list[dict]:
         for node in page["nodes"]:
             if not node:
                 continue
-            name = node["repository"]["name"]
-            if not name.startswith(prefix):
+            repo = node["repository"]
+            name = repo["name"]
+            if repo["isArchived"] or name in exclude or not name.startswith(prefix):
                 continue
             commits = node["commits"]["nodes"]
             if not commits:
@@ -143,6 +154,7 @@ def collect_open_prs(token: str, org: str, prefix: str) -> list[dict]:
                     "repo": name,
                     "number": node["number"],
                     "url": node["url"],
+                    "base": node["baseRefName"],
                     "created_at": parse_ts(node["createdAt"]),
                     "draft": node["isDraft"],
                     "oid": commit["oid"],
@@ -153,6 +165,55 @@ def collect_open_prs(token: str, org: str, prefix: str) -> list[dict]:
         if not page["pageInfo"]["hasNextPage"]:
             return out
         cursor = page["pageInfo"]["endCursor"]
+
+
+class ContextGate:
+    """Answers 'does this repo actually require the context?', with a cache.
+
+    Rulesets are per repository and only a handful of repositories ever need
+    checking (those with a PR missing the status), so the cost is negligible.
+    Unreadable rulesets (private repo without the plan, permission gaps) are
+    treated as 'not required' and counted separately: guessing 'required' there
+    would turn an unknown into a permanently failing watchdog.
+    """
+
+    def __init__(self, token: str, org: str, context: str) -> None:
+        self.token = token
+        self.org = org
+        self.context = context
+        self.cache: dict[str, bool | None] = {}
+
+    def required_by(self, repo: str) -> bool | None:
+        if repo not in self.cache:
+            self.cache[repo] = self._lookup(repo)
+        return self.cache[repo]
+
+    def _lookup(self, repo: str) -> bool | None:
+        try:
+            rulesets = request(f"{API}/repos/{self.org}/{repo}/rulesets", self.token)
+        except urllib.error.HTTPError as exc:
+            # 403 here means the repository cannot have rulesets at all (private
+            # repo on a plan without them), so nothing can be required of it.
+            # Anything else is a genuine unknown.
+            return False if exc.code == 403 else None
+        if not isinstance(rulesets, list):
+            return None
+        for ruleset in rulesets:
+            if ruleset.get("enforcement") != "active":
+                continue
+            try:
+                detail = request(
+                    f"{API}/repos/{self.org}/{repo}/rulesets/{ruleset['id']}", self.token
+                )
+            except urllib.error.HTTPError:
+                continue
+            for rule in detail.get("rules") or []:
+                if rule.get("type") != "required_status_checks":
+                    continue
+                checks = (rule.get("parameters") or {}).get("required_status_checks") or []
+                if any(c.get("context") == self.context for c in checks):
+                    return True
+        return False
 
 
 def already_retried(token: str, org: str, pr: dict) -> bool:
@@ -192,6 +253,10 @@ def write_summary(lines: list[str]) -> None:
     print(text)
 
 
+def pr_line(pr: dict) -> str:
+    return f"- {pr['url']} — base `{pr['base']}`, head `{pr['oid'][:8]}`, stuck {pr['age_minutes']}min"
+
+
 def main() -> int:
     read_token = env("GH_TOKEN")
     if not read_token:
@@ -199,15 +264,18 @@ def main() -> int:
         return 2
     write_token = env("GH_WRITE_TOKEN")
     org = env("ORG", "open-vela")
-    prefix = env("REPO_PREFIX", "contest2026")
+    prefix = env("REPO_PREFIX", "")
+    exclude = {r.strip() for r in env("EXCLUDE_REPOS").split(",") if r.strip()}
     context = env("REQUIRED_CONTEXT", "cla/signature")
-    min_age = int(env("MIN_AGE_MINUTES", "30") or "30")
+    min_age = int(env("MIN_AGE_MINUTES", "30"))
     dry_run = env_flag("DRY_RUN")
 
-    prs = collect_open_prs(read_token, org, prefix)
+    prs = collect_open_prs(read_token, org, prefix, exclude)
     now = datetime.now(timezone.utc)
+    # Rulesets need more than public read access, so prefer the elevated token.
+    gate = ContextGate(write_token or read_token, org, context)
 
-    stuck, too_fresh = [], []
+    stuck, too_fresh, not_gated, unknown_gate = [], [], [], []
     for pr in prs:
         if context in pr["contexts"]:
             continue
@@ -215,7 +283,16 @@ def main() -> int:
         # old while the PR was opened seconds ago, and vice versa.
         age = (now - max(pr["created_at"], pr["committed_at"])).total_seconds() / 60
         pr["age_minutes"] = int(age)
-        (too_fresh if age < min_age else stuck).append(pr)
+        if age < min_age:
+            too_fresh.append(pr)
+            continue
+        required = gate.required_by(pr["repo"])
+        if required is None:
+            unknown_gate.append(pr)
+        elif not required:
+            not_gated.append(pr)
+        else:
+            stuck.append(pr)
 
     retried, escalate, blocked = [], [], []
     for pr in stuck:
@@ -227,21 +304,31 @@ def main() -> int:
             post_retry(write_token, org, pr, context)
             retried.append(pr)
 
+    scope = f"`{prefix}*`" if prefix else "all repos"
     lines = [
-        f"## contest CLA watchdog — `{prefix}*` in `{org}`",
+        f"## CLA watchdog — {scope} in `{org}`",
         "",
-        f"- open PRs scanned: **{len(prs)}**",
-        f"- missing `{context}`: **{len(stuck)}**"
-        + (f" (plus {len(too_fresh)} younger than {min_age}min, ignored)" if too_fresh else ""),
+        f"- open PRs scanned: **{len(prs)}**"
+        + (f" (excluding {', '.join(sorted(exclude))})" if exclude else ""),
+        f"- missing `{context}` **and** required by a ruleset: **{len(stuck)}**",
     ]
+    ignored = []
+    if too_fresh:
+        ignored.append(f"{len(too_fresh)} younger than {min_age}min")
+    if not_gated:
+        ignored.append(f"{len(not_gated)} where no ruleset requires it")
+    if unknown_gate:
+        ignored.append(f"{len(unknown_gate)} whose rulesets could not be read")
+    if ignored:
+        lines.append(f"- missing but ignored: {', '.join(ignored)}")
     if retried:
         lines += ["", f"### Re-triggered `/check-cla` ({len(retried)})", ""]
-        lines += [f"- {p['url']} — head `{p['oid'][:8]}`, stuck {p['age_minutes']}min" for p in retried]
+        lines += [pr_line(p) for p in retried]
         lines += ["", "The next pass verifies whether the status showed up."]
     if blocked:
         why = "dry run" if dry_run else "no write token available"
         lines += ["", f"### Would re-trigger `/check-cla` — skipped, {why} ({len(blocked)})", ""]
-        lines += [f"- {p['url']} — head `{p['oid'][:8]}`, stuck {p['age_minutes']}min" for p in blocked]
+        lines += [pr_line(p) for p in blocked]
     if escalate:
         lines += [
             "",
@@ -254,13 +341,13 @@ def main() -> int:
         ]
         for p in escalate:
             lines += [
-                f"- {p['url']} — head `{p['oid'][:8]}`, stuck {p['age_minutes']}min",
+                pr_line(p),
                 "  ```bash",
                 f"  R={org}/{p['repo']}",
-                "  WF=$(gh api repos/$R/actions/workflows \\",
-                "         --jq '.workflows[]|select(.path==\".github/workflows/cla.yml\")|.id')",
-                "  gh api -X PUT repos/$R/actions/workflows/$WF/disable",
-                "  gh api -X PUT repos/$R/actions/workflows/$WF/enable",
+                "  for W in $(gh api repos/$R/actions/workflows --jq '.workflows[].id'); do",
+                "    gh api -X PUT repos/$R/actions/workflows/$W/disable",
+                "    gh api -X PUT repos/$R/actions/workflows/$W/enable",
+                "  done",
                 "  gh api -X PUT repos/$R/actions/permissions -F enabled=false",
                 "  gh api -X PUT repos/$R/actions/permissions -F enabled=true -f allowed_actions=all",
                 f"  gh api -X POST repos/$R/issues/{p['number']}/comments -f body='/check-cla'",
@@ -271,7 +358,7 @@ def main() -> int:
     write_summary(lines)
 
     if escalate:
-        print(f"::error::{len(escalate)} contest PR(s) still missing {context} after an automatic retry")
+        print(f"::error::{len(escalate)} PR(s) still missing {context} after an automatic retry")
         return 1
     return 0
 
