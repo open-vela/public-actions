@@ -13,8 +13,13 @@ permissions:
   statuses: write
   checks: write
 
+# One group per pull request. github.event.pull_request is absent on
+# issue_comment events, so without github.event.issue.number the fallback would
+# be github.ref -- identical for every /check-cla in a repository, making
+# concurrent re-checks on different PRs cancel each other and leave all but one
+# without a cla/signature status.
 concurrency:
-  group: cla-check-${{ github.event.pull_request.number || github.ref }}
+  group: cla-check-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
