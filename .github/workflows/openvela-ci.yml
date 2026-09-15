@@ -1,0 +1,129 @@
+name: OpenVela CI
+
+# Reusable OpenVela CI for any manifest repository (nuttx, apps, vendor
+# trees, ...). The caller repository only needs a thin workflow:
+#
+#   jobs:
+#     ci:
+#       uses: open-vela/public-actions/.github/workflows/openvela-ci.yml@dev
+#       with:
+#         repo-path: nuttx
+#
+# Each testlist in `testlists` becomes one job building through the
+# repository's tools/testbuild.sh with the vela build-system plugin.
+# Testlists, testbuild.sh and the plugin always come from the workspace
+# nuttx tree: the overlaid one when nuttx itself is under test, the
+# manifest checkout otherwise.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Docker image containing OpenVela CI tools.
+        default: ghcr.io/open-vela/openvela-ci-linux:dev
+        required: false
+        type: string
+      manifest-branch:
+        description: Repo manifest branch.
+        default: dev
+        required: false
+        type: string
+      repo-path:
+        description: Manifest checkout path for the repository under test.
+        default: ""
+        required: false
+        type: string
+      testlists:
+        description: >-
+          JSON array of testlist names under tools/ci/testlist/ to build,
+          one matrix job each. The default is every list in the tree that
+          resolves to at least one buildable target -- 25 lists, 964
+          targets. Deliberately excluded: macos.dat and msys2.dat (other
+          hosts) and codechecker.dat (separate tooling). Excluded because
+          they resolve to zero buildable targets, every entry being
+          blacklisted upstream or the file holding blacklist lines only:
+          other, risc-v-02, risc-v-03, risc-v-05, xtensa-01, xtensa-02.
+          Recheck with: tools/testbuild.sh -p -N <list> | awk
+          '/^Skipping: /{s++;next} /^Configuration\/Tool: /{t++}
+          END{print t-s}'
+        default: >-
+          ["arm-01", "arm-02", "arm-03", "arm-04", "arm-05", "arm-06",
+           "arm-07", "arm-08", "arm-09", "arm-10", "arm-11", "arm-12",
+           "arm-13", "arm-14", "arm64-01", "risc-v-01", "risc-v-04",
+           "risc-v-06", "sim-01", "sim-02", "sim-03", "x86_64-01",
+           "vela-arm-01", "vela-arm64-01", "vela-x86_64-01"]
+        required: false
+        type: string
+      citest-testlist:
+        description: >-
+          Runtime-test (NTFC) testlist. Empty string disables the citest job.
+        default: tools/ci/testlist/vela-citest.dat
+        required: false
+        type: string
+      max-targets:
+        description: Maximum targets per testlist. Use 0 for all targets.
+        default: "0"
+        required: false
+        type: string
+      jobs:
+        description: Build parallelism.
+        default: "4"
+        required: false
+        type: string
+      ci-assets-repository:
+        description: Repository containing OpenVela CI helper assets.
+        default: open-vela/public-actions
+        required: false
+        type: string
+      ci-assets-ref:
+        description: Ref for ci-assets-repository.
+        default: dev
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        testlist: ${{ fromJSON(inputs.testlists) }}
+    name: ${{ matrix.testlist }}
+    uses: ./.github/workflows/openvela-repo-ci.yml
+    with:
+      image: ${{ inputs.image }}
+      manifest-branch: ${{ inputs.manifest-branch }}
+      repo-path: ${{ inputs.repo-path }}
+      testlist: tools/ci/testlist/${{ matrix.testlist }}.dat
+      max-targets: ${{ inputs.max-targets }}
+      jobs: ${{ inputs.jobs }}
+      artifact-name: openvela-ci-${{ matrix.testlist }}
+      job-name: build ${{ matrix.testlist }}
+      ci-assets-repository: ${{ inputs.ci-assets-repository }}
+      ci-assets-ref: ${{ inputs.ci-assets-ref }}
+
+  citest:
+    if: ${{ inputs.citest-testlist != '' }}
+    uses: ./.github/workflows/openvela-repo-ci.yml
+    with:
+      image: ${{ inputs.image }}
+      manifest-branch: ${{ inputs.manifest-branch }}
+      repo-path: ${{ inputs.repo-path }}
+      testlist: ${{ inputs.citest-testlist }}
+      max-targets: ${{ inputs.max-targets }}
+      jobs: ${{ inputs.jobs }}
+      run-runtime-tests: true
+      require-runtime-tests: true
+      artifact-name: openvela-ci-citest
+      job-name: NTFC runtime (citest)
+      # The manifest's vendored libc++ (a clang-only fork) shadows the
+      # upstream download+patch path in libs/libxx and cannot be compiled
+      # by the host GCC that sim builds use. Prune it so the citest build
+      # takes the same upstream libc++ path as Apache NuttX CI. Vendor
+      # targets keep the vendored copy (they build with prebuilt clang).
+      prune-workspace-paths: nuttx/libs/libxx/libcxx/libcxx
+      ci-assets-repository: ${{ inputs.ci-assets-repository }}
+      ci-assets-ref: ${{ inputs.ci-assets-ref }}

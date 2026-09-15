@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+manifest_url="https://github.com/open-vela/manifests.git"
+branch="dev"
+manifest="openvela.xml"
+groups=""
+jobs="$(nproc)"
+depth_args=(--depth=1)
+sync_only=0
+
+usage() {
+  cat <<'EOF'
+Usage: openvela-init [options]
+
+Initialize and sync an OpenVela workspace using repo.
+
+Options:
+  --url <url>          Manifest repository URL.
+                       Default: https://github.com/open-vela/manifests.git
+  --branch <branch>   Manifest branch. Default: dev
+  --manifest <file>   Manifest file. Default: openvela.xml
+  --groups <groups>   Optional repo groups. Default: use manifest defaults.
+  --jobs <n>          Sync parallelism. Default: nproc
+  --no-depth          Do not pass --depth=1 to repo init.
+  --sync-only         Skip repo init and only run repo sync.
+  -h, --help          Show this help.
+
+Examples:
+  openvela-init
+  openvela-init --branch trunk --jobs 16
+  openvela-init --groups default,platform-linux,platform-linux-x86_64
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --url)
+      manifest_url="$2"
+      shift 2
+      ;;
+    --branch)
+      branch="$2"
+      shift 2
+      ;;
+    --manifest)
+      manifest="$2"
+      shift 2
+      ;;
+    --groups)
+      groups="$2"
+      shift 2
+      ;;
+    --jobs)
+      jobs="$2"
+      shift 2
+      ;;
+    --no-depth)
+      depth_args=()
+      shift
+      ;;
+    --sync-only)
+      sync_only=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "openvela-init: unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+git lfs install >/dev/null
+
+if ! git config --global user.name >/dev/null; then
+  git config --global user.name "${GIT_USER_NAME:-OpenVela CI}"
+fi
+
+if ! git config --global user.email >/dev/null; then
+  git config --global user.email "${GIT_USER_EMAIL:-openvela-ci@example.invalid}"
+fi
+
+# Avoid repo init's interactive "Enable color display" prompt in fresh
+# containers. This is local UI configuration only; it does not affect checkout
+# authentication or remotes.
+if ! git config --global color.ui >/dev/null; then
+  git config --global color.ui false
+fi
+
+if [[ "${sync_only}" -eq 0 ]]; then
+  repo_init_args=(
+    repo init
+    -u "${manifest_url}"
+    -b "${branch}"
+    -m "${manifest}"
+    --git-lfs
+    "${depth_args[@]}"
+  )
+
+  if [[ -n "${groups}" ]]; then
+    repo_init_args+=(--group="${groups}")
+  fi
+
+  "${repo_init_args[@]}"
+fi
+
+repo sync -c -j"${jobs}"

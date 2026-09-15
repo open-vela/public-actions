@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+ntfc_dir="${NTFCDIR:-/workspace/ntfc}"
+repo_url="${OPENVELA_NTFC_TESTING_URL:-https://github.com/apache/nuttx-ntfc-testing.git}"
+branch="${OPENVELA_NTFC_TESTING_BRANCH:-release-0.0.1}"
+jobs="$(nproc)"
+
+usage() {
+  cat <<'EOF'
+Usage: openvela-ntfc-setup [options]
+
+Prepare the NTFC test case workspace used by NuttX/OpenVela runtime tests.
+
+Options:
+  --dir <dir>       NTFC workspace directory. Default: $NTFCDIR or /workspace/ntfc
+  --repo <url>      NTFC testing repository.
+                   Default: https://github.com/apache/nuttx-ntfc-testing.git
+  --branch <ref>    NTFC testing branch/tag. Default: release-0.0.1
+  --jobs <n>        Reserved for future parallel setup. Default: nproc
+  -h, --help        Show this help.
+
+The resulting layout matches Apache NuttX CI:
+  $NTFCDIR/external/nuttx-testing
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dir)
+      ntfc_dir="$2"
+      shift 2
+      ;;
+    --repo)
+      repo_url="$2"
+      shift 2
+      ;;
+    --branch)
+      branch="$2"
+      shift 2
+      ;;
+    --jobs)
+      jobs="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "openvela-ntfc-setup: unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! "${jobs}" =~ ^[0-9]+$ || "${jobs}" -lt 1 ]]; then
+  echo "openvela-ntfc-setup: --jobs must be a positive integer" >&2
+  exit 2
+fi
+
+if ! command -v ntfc >/dev/null 2>&1; then
+  echo "openvela-ntfc-setup: ntfc command not found" >&2
+  exit 1
+fi
+
+mkdir -p "${ntfc_dir}/external"
+
+testing_dir="${ntfc_dir}/external/nuttx-testing"
+if [[ -d "${testing_dir}/.git" ]]; then
+  git -C "${testing_dir}" fetch --depth=1 origin "${branch}"
+  git -C "${testing_dir}" checkout --detach FETCH_HEAD
+else
+  rm -rf "${testing_dir}"
+  git clone --depth=1 --branch "${branch}" "${repo_url}" "${testing_dir}"
+fi
+
+echo "NTFCDIR=${ntfc_dir}"
+echo "NTFC_TESTPATH=${testing_dir}"
+ntfc --help >/dev/null

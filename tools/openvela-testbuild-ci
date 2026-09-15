@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# tools/openvela-testbuild-ci
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+# CI adapter around the repo-under-test's tools/testbuild.sh for the
+# OpenVela reusable workflow. Trims the list to --max-targets, runs
+# testbuild.sh with the vela build-system plugin, tees the log under
+# ci-artifacts/testbuild/ and writes a one-row summary.tsv.
+
+set -o pipefail
+
+usage() {
+  echo "USAGE: $0 --workspace <dir> --repo-path <rel> --testlist <file>"
+  echo "          [--max-targets <n>] [--jobs <n>] [--run-tests] [--require-run-script]"
+  exit 1
+}
+
+WORKSPACE=""
+REPO_PATH=""
+TESTLIST=""
+MAX_TARGETS=0
+JOBS=4
+RUN_TESTS=0
+REQUIRE_RUN=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --workspace) shift; WORKSPACE="$1" ;;
+    --repo-path) shift; REPO_PATH="$1" ;;
+    --testlist) shift; TESTLIST="$1" ;;
+    --max-targets) shift; MAX_TARGETS="$1" ;;
+    --jobs) shift; JOBS="$1" ;;
+    --run-tests) RUN_TESTS=1 ;;
+    --require-run-script) REQUIRE_RUN=1 ;;
+    *) echo "ERROR: unknown option: $1"; usage ;;
+  esac
+  shift
+done
+
+[ -n "$WORKSPACE" ] && [ -n "$REPO_PATH" ] && [ -n "$TESTLIST" ] || usage
+[ -r "$TESTLIST" ] || { echo "ERROR: testlist not readable: $TESTLIST"; exit 1; }
+
+repo_dir="$WORKSPACE/$REPO_PATH"
+testbuild="$repo_dir/tools/testbuild.sh"
+plugin="$repo_dir/tools/ci/buildsystems/vela.sh"
+[ -r "$testbuild" ] || { echo "ERROR: $testbuild not found"; exit 1; }
+[ -r "$plugin" ] || { echo "ERROR: $plugin not found"; exit 1; }
+
+artifacts="$WORKSPACE/ci-artifacts/testbuild"
+listname="$(basename "$TESTLIST" .dat)"
+mkdir -p "$artifacts/$listname"
+
+runlist="$TESTLIST"
+if [ "$MAX_TARGETS" -gt 0 ] 2>/dev/null; then
+  runlist="$artifacts/$listname/trimmed.dat"
+  awk -v n="$MAX_TARGETS" '
+    /^#/ || /^-/ || /^[Cc][Mm][Aa][Kk][Ee],/ || /^[[:space:]]*$/ { print; next }
+    count < n { print; count++ }
+  ' "$TESTLIST" > "$runlist"
+  echo "Trimmed to first $MAX_TARGETS target line(s); wildcards count as one line:"
+  grep -vE "^#|^[[:space:]]*$" "$runlist" || true
+fi
+
+args=(
+  -N
+  -e "-Wno-cpp -Werror"
+  -j "$JOBS"
+  -t "$WORKSPACE/nuttx"
+  -a "$WORKSPACE/apps"
+  --buildsystem "$plugin"
+)
+if [ "$RUN_TESTS" -eq 1 ]; then
+  args+=(-R)
+  export VELA_REQUIRE_RUN=$REQUIRE_RUN
+fi
+
+log="$artifacts/$listname/testbuild.log"
+export ARTIFACTDIR="$artifacts/$listname/buildartifacts"
+status=PASS
+if ! bash "$testbuild" "${args[@]}" "$runlist" 2>&1 | tee "$log"; then
+  status=FAIL
+fi
+
+printf 'status\ttestlist\tlog\n' > "$artifacts/summary.tsv"
+printf '%s\t%s\t%s\n' "$status" "$listname" \
+  "ci-artifacts/testbuild/$listname/testbuild.log" >> "$artifacts/summary.tsv"
+
+attempted=$(grep -c "^Configuration/Tool:" "$log" 2>/dev/null || true)
+skipped=$(grep -c "^Skipping:" "$log" 2>/dev/null || true)
+passed=$(grep -c "^  PASS:" "$log" 2>/dev/null || true)
+failed=$(grep -c "^  FAIL:" "$log" 2>/dev/null || true)
+
+if [ "${attempted:-0}" -eq 0 ]; then
+  echo "ERROR: testlist expanded to zero targets; refusing to report success" >&2
+  status=FAIL
+fi
+
+echo "===================================================================================="
+echo "openvela-testbuild-ci summary"
+echo "  testlist:  $listname"
+echo "  targets:   $attempted listed, $skipped blacklist-skipped"
+echo "  results:   $passed passed, $failed failed"
+echo "  status:    $status"
+echo "  full log:  ci-artifacts/testbuild/$listname/testbuild.log"
+echo "  per-target build.sh log: ci-artifacts/testbuild/$listname/buildartifacts/<board>/<config>/build.log"
+echo "===================================================================================="
+
+# Totals and failed targets go to the GitHub job summary; the plugin adds
+# one row per target.
+if [ -n "$GITHUB_STEP_SUMMARY" ]; then
+  {
+    echo
+    echo "### $listname: $passed passed, $failed failed" \
+         "($skipped blacklist-skipped of $attempted listed)"
+    if [ "${failed:-0}" -gt 0 ]; then
+      echo
+      echo "Failed targets:"
+      echo
+      grep "^  FAIL:" "$log" | sed 's/^  FAIL: /- `/; s/;.*/`/'
+    fi
+  } >> "$GITHUB_STEP_SUMMARY"
+fi
+
+if [ "${failed:-0}" -gt 0 ]; then
+  echo "::error title=$listname::$failed of $attempted targets failed to build"
+fi
+
+[ "$status" = PASS ]
