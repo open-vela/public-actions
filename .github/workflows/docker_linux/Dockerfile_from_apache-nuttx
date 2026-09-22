@@ -24,9 +24,15 @@ RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
 # libunwind-dev: arch/sim links -lunwind unconditionally, while the base image
 # carries only the libunwind8 runtime. i386 as well, for CONFIG_SIM_M32 configs.
 # python3-venv: the base image's Python has no ensurepip.
+# flex/libfl: the manifest RISC-V prebuilt tools link against libfl.so.2.
+# Keep the runtime, development symlink/headers, and generator at the versions
+# validated together on the Ubuntu 22.04 base image.
 RUN dpkg --print-foreign-architectures | grep -q i386 || dpkg --add-architecture i386
 RUN apt-get update
 RUN DEBIAN_FRONTEND="noninteractive" apt-get install -y -qq \
+    flex=2.6.4-8build2 \
+    libfl2=2.6.4-8build2 \
+    libfl-dev=2.6.4-8build2 \
     libunwind-dev \
     libunwind-dev:i386 \
     python3-venv
