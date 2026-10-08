@@ -227,7 +227,7 @@ jobs:
       DOCKER_BUILDKIT: 1
     strategy:
       matrix:
-        group: [goldfish, sil, aurix, flagchip, qemu, ntfc-sim, ntfc-rv64, ntfc-sabre, ntfc-armv8a, ntfc-armv8a-smp]  # grouped by vendor / platform
+        group: [goldfish, sil, aurix, flagchip, qemu, ntfc-sim, ntfc-rv32, ntfc-rv64, ntfc-sabre, ntfc-armv8a, ntfc-armv8a-smp]  # grouped by vendor / platform
         include:
           - group: goldfish
             tasks:
@@ -270,6 +270,9 @@ jobs:
           - group: ntfc-sim
             tasks:
               - sim:citest@ntfc
+          - group: ntfc-rv32
+            tasks:
+              - rv-virt:citest@ntfc
           - group: ntfc-rv64
             tasks:
               - rv-virt:citest64@ntfc
