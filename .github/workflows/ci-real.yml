@@ -660,7 +660,9 @@ jobs:
             ghcr.io/open-vela/openvela-ci-linux_from_apache-nuttx:latest \
             /bin/bash -c "set -e && python3 --version && \
               python3 -m venv /workspace/.ntfc-venv && \
-              /workspace/.ntfc-venv/bin/pip install --quiet ntfc==0.0.3 pytest==9.1.1 && \
+              /workspace/.ntfc-venv/bin/pip install --quiet \
+                \"ntfc @ git+https://github.com/apache/nuttx-ntfc.git@9e17dbeacd02c9081dd0512dac5e6a3cf4730167\" \
+                pytest==9.1.1 && \
               export PATH=/workspace/.ntfc-venv/bin:\$PATH && ntfc --help > /dev/null && \
               rm -rf /workspace/.ntfc && mkdir -p /workspace/.ntfc/external && \
               git clone --depth=1 --branch release-0.0.2 \
