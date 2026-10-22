@@ -227,7 +227,7 @@ jobs:
       DOCKER_BUILDKIT: 1
     strategy:
       matrix:
-        group: [goldfish, sil, aurix, flagchip, qemu, ntfc-sim, ntfc-rv32, ntfc-rv64, ntfc-sabre, ntfc-armv8a, ntfc-armv8a-smp]  # grouped by vendor / platform
+        group: [goldfish, sil, aurix, flagchip, qemu, ntfc-sim, ntfc-rv32, ntfc-rv64, ntfc-sabre, ntfc-armv8a, ntfc-armv8a-smp, ntfc-intel64]  # grouped by vendor / platform
         include:
           - group: goldfish
             tasks:
@@ -285,6 +285,9 @@ jobs:
           - group: ntfc-armv8a-smp
             tasks:
               - qemu-armv8a:citest_smp@cmake@ntfc
+          - group: ntfc-intel64
+            tasks:
+              - qemu-intel64:citest_smp@ntfc
       fail-fast: false
     steps:
       - name: Maximize build space
