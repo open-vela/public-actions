@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   setup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       TRIGGER_REPO_NAME: ${{ steps.set-env.outputs.TRIGGER_REPO_NAME }}
       TRIGGER_COMMIT_ID: ${{ steps.set-env.outputs.TRIGGER_COMMIT_ID }}
@@ -220,7 +220,7 @@ jobs:
   # Build tasks in parallel as a matrix
   ci-tasks:
     needs: setup
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Only the ntfc groups are bounded here; the others keep GitHub's 360 default.
     timeout-minutes: ${{ startsWith(matrix.group, 'ntfc') && 180 || 360 }}
     env:
@@ -712,7 +712,7 @@ jobs:
   post-processing:
     needs: [setup, ci-tasks]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Generate App Token
         id: app-token
