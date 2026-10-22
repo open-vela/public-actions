@@ -20,7 +20,7 @@ permissions:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   setup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       TRIGGER_REPO_NAME: ${{ steps.set-env.outputs.TRIGGER_REPO_NAME }}
       TRIGGER_COMMIT_ID: ${{ steps.set-env.outputs.TRIGGER_COMMIT_ID }}
@@ -219,7 +219,7 @@ jobs:
   # 并行执行的CI任务矩阵
   ci-tasks:
     needs: setup
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       DOCKER_BUILDKIT: 1
     strategy:
@@ -545,7 +545,7 @@ jobs:
   post-processing:
     needs: [setup, ci-tasks]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Generate App Token
         id: app-token
