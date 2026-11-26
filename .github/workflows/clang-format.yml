@@ -7,10 +7,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
     paths:
-      - '**/*.cpp'   # 只针对 .cpp 文件
-      - '**/*.h'     # 只针对 .h 文件
-      - '**/*.c'   # 只针对 .c 文件
-      - '**/*.hpp'   # 只针对 .hpp 文件
+      - '**/*.cpp'
+      - '**/*.h'
+      - '**/*.c'
+      - '**/*.hpp'
 
   # reusable
   workflow_call:
@@ -24,12 +24,9 @@ jobs:
   clang-format:
     runs-on: ubuntu-latest
     steps:
-    - name: Update and install clang-format
+    - name: Install clang-format 14
       run: |
-        sudo apt-get update
-        sudo apt-get install -y clang-format-14
-        sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 110
-        sudo update-alternatives --display clang-format
+        sudo pip3 install --break-system-packages clang-format==14.0.6
         clang-format --version
 
     - name: Checkout Repo
