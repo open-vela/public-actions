@@ -21,7 +21,9 @@ jobs:
 
   ci_dev:
     # Run only for PRs targeting dev; comments do not trigger CI.
-    if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_call') && github.event.pull_request.base.ref == 'dev'
+    # The public-actions repo is not part of the openvela manifest, so the
+    # full repo-sync CI cannot resolve it; skip it for this repo only.
+    if: (github.event_name == 'pull_request_target' || github.event_name == 'workflow_call') && github.event.pull_request.base.ref == 'dev' && github.repository != 'open-vela/public-actions'
     uses: open-vela/public-actions/.github/workflows/ci-real.yml@dev
     secrets: inherit
 
